@@ -21,4 +21,4 @@ job:
 
 
       - name: run test
-        run: python -m unittest discover
+        run: python3 -m unittest discover
