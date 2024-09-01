@@ -1,6 +1,6 @@
 import unittest
 
-from main import decodeJson
+from main import decodeJson, get_data
 
 class TestGeneral(unittest.TestCase):
     def test_placeholder(self):
@@ -8,7 +8,7 @@ class TestGeneral(unittest.TestCase):
 
 
     def test_decodejson(self):
-        input = '{"tiam": "bibendum", "lacus": 23.5, "sellus": false}'
+        input = get_data()
         data = decodeJson(input)
         self.assertDictEqual(
             data,
