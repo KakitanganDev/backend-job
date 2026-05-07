@@ -20,23 +20,30 @@ from src.app import app
 
 class TestLeaveAPI(unittest.TestCase):
 
+    _db_path = "./test_api.db"
+
     @classmethod
     def setUpClass(cls):
+        Base.metadata.drop_all(bind=engine)
         Base.metadata.create_all(bind=engine)
-        # Seed demo data explicitly
         db = SessionLocal()
         try:
             seed_demo_data(db)
         finally:
             db.close()
 
+    @classmethod
+    def tearDownClass(cls):
+        Base.metadata.drop_all(bind=engine)
+        engine.dispose()
+        if os.path.exists(cls._db_path):
+            os.remove(cls._db_path)
+
     def setUp(self):
         self.client = TestClient(app)
-        # Reset per-test state: delete leave requests and reset balances
         db = SessionLocal()
         try:
             db.query(LeaveRequest).delete()
-            # Reset all leave balance used_days to zero
             from src.models import LeaveBalance
             db.query(LeaveBalance).update({"used_days": 0.0})
             db.commit()
