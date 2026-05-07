@@ -8,6 +8,7 @@ dependencies = [
     "fastapi==0.136.1",
     "uvicorn[standard]==0.46.0",
     "sqlalchemy==2.0.38",
+    "python-dotenv==1.2.1",
 ]
 
 [project.optional-dependencies]
