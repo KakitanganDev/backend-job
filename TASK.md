@@ -150,11 +150,11 @@ All tests use in-memory SQLite. Each test method seeds fresh data via `seed_demo
 
 | # | Task | Status |
 |---|------|--------|
-| 7.1 | Verify all Pydantic schemas render with `Field` descriptions at `/docs` | Pending |
-| 7.2 | Verify all routes appear under correct tags with `response_model` and status codes | Pending |
-| 7.3 | Manually confirm `/docs` interactive docs are usable (try a request) | Pending |
-| 7.4 | Run `make test` — all tests pass | Pending |
-| 7.5 | Run `make run` — server boots without errors | Pending |
+| 7.1 | Verify all Pydantic schemas render with `Field` descriptions at `/docs` | Complete |
+| 7.2 | Verify all routes appear under correct tags with `response_model` and status codes | Complete |
+| 7.3 | Manually confirm `/docs` interactive docs are usable (try a request) | Complete |
+| 7.4 | Run `make test` — all tests pass | Complete |
+| 7.5 | Run `make run` — server boots without errors | Complete |
 
 ---
 

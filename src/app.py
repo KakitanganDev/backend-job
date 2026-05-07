@@ -62,8 +62,8 @@ class LeaveBalanceOut(BaseModel):
 
 
 class EmployeeWithBalancesOut(BaseModel):
-    employee: EmployeeOut
-    leave_balances: list[LeaveBalanceOut]
+    employee: EmployeeOut = Field(description="Employee record")
+    leave_balances: list[LeaveBalanceOut] = Field(description="Leave balances for the employee")
 
 
 class LeaveRequestCreate(BaseModel):
@@ -95,17 +95,17 @@ class LeaveRequestReview(BaseModel):
 
 
 class PaginatedLeaveRequests(BaseModel):
-    items: list[LeaveRequestOut]
-    total: int
-    page: int
-    page_size: int
+    items: list[LeaveRequestOut] = Field(description="List of leave requests")
+    total: int = Field(description="Total number of matching records")
+    page: int = Field(description="Current page number")
+    page_size: int = Field(description="Records per page")
 
 
 class PaginatedEmployees(BaseModel):
-    items: list[EmployeeOut]
-    total: int
-    page: int
-    page_size: int
+    items: list[EmployeeOut] = Field(description="List of employees")
+    total: int = Field(description="Total number of matching records")
+    page: int = Field(description="Current page number")
+    page_size: int = Field(description="Records per page")
 
 
 class HolidayOut(BaseModel):
@@ -126,10 +126,10 @@ class HolidayUpdate(BaseModel):
 
 
 class PaginatedHolidays(BaseModel):
-    items: list[HolidayOut]
-    total: int
-    page: int
-    page_size: int
+    items: list[HolidayOut] = Field(description="List of holidays")
+    total: int = Field(description="Total number of matching records")
+    page: int = Field(description="Current page number")
+    page_size: int = Field(description="Records per page")
 
 
 # ── Routes: Employees ─────────────────────────────────────────────────────
