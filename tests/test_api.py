@@ -12,10 +12,10 @@ os.environ["DATABASE_URL"] = "sqlite:///./test_api.db"
 
 from fastapi.testclient import TestClient
 
-from src.database import Base, engine, SessionLocal
-from src.models import LeaveRequest, PublicHoliday
-from src.services import seed_demo_data
 from src.app import app
+from src.database import Base, SessionLocal, engine
+from src.models import LeaveRequest
+from src.services import seed_demo_data
 
 
 class TestLeaveAPI(unittest.TestCase):
@@ -55,30 +55,40 @@ class TestLeaveAPI(unittest.TestCase):
         self.assertEqual(resp.status_code, 401)
 
     def test_auth_malformed_header(self):
-        resp = self.client.get("/api/v1/employees", headers={"Authorization": "Invalid thing"})
+        resp = self.client.get(
+            "/api/v1/employees", headers={"Authorization": "Invalid thing"}
+        )
         self.assertEqual(resp.status_code, 401)
 
     def test_list_employees(self):
-        resp = self.client.get("/api/v1/employees", headers={"Authorization": "Bearer 1"})
+        resp = self.client.get(
+            "/api/v1/employees", headers={"Authorization": "Bearer 1"}
+        )
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
         self.assertIn("items", data)
         self.assertIn("total", data)
 
     def test_get_employee(self):
-        resp = self.client.get("/api/v1/employees/2", headers={"Authorization": "Bearer 1"})
+        resp = self.client.get(
+            "/api/v1/employees/2", headers={"Authorization": "Bearer 1"}
+        )
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
         self.assertIn("employee", data)
         self.assertIn("leave_balances", data)
 
     def test_get_employee_404(self):
-        resp = self.client.get("/api/v1/employees/9999", headers={"Authorization": "Bearer 1"})
+        resp = self.client.get(
+            "/api/v1/employees/9999", headers={"Authorization": "Bearer 1"}
+        )
         self.assertEqual(resp.status_code, 404)
 
     def test_get_employee_403(self):
         # Carol (id=3) is not Bob's (id=2) manager — should be denied
-        resp = self.client.get("/api/v1/employees/2", headers={"Authorization": "Bearer 3"})
+        resp = self.client.get(
+            "/api/v1/employees/2", headers={"Authorization": "Bearer 3"}
+        )
         self.assertEqual(resp.status_code, 403)
 
     def test_create_leave_request(self):
@@ -179,7 +189,9 @@ class TestLeaveAPI(unittest.TestCase):
         self.assertEqual(resp.status_code, 403)
 
     def test_leave_balances(self):
-        resp = self.client.get("/api/v1/leave-balances/2", headers={"Authorization": "Bearer 1"})
+        resp = self.client.get(
+            "/api/v1/leave-balances/2", headers={"Authorization": "Bearer 1"}
+        )
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
         self.assertIsInstance(data, list)
@@ -197,7 +209,9 @@ class TestLeaveAPI(unittest.TestCase):
         holiday_id = create_resp.json()["id"]
 
         # List
-        list_resp = self.client.get("/api/v1/holidays", headers={"Authorization": "Bearer 2"})
+        list_resp = self.client.get(
+            "/api/v1/holidays", headers={"Authorization": "Bearer 2"}
+        )
         self.assertEqual(list_resp.status_code, 200)
 
         # Update

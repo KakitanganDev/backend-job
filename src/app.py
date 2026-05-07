@@ -4,16 +4,16 @@ FastAPI application for Kakitangan Leave Management System.
 
 from contextlib import asynccontextmanager
 from datetime import date, datetime
-from typing import Annotated, Optional, Literal
+from typing import Annotated, Literal
 
-from fastapi import FastAPI, Depends, HTTPException, Query, APIRouter
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
-from src.database import engine, get_db, Base
-from src.models import LeaveType, LeaveStatus, LeaveDuration
-from src.dependencies import get_current_employee, require_manager
 from src import services
+from src.database import Base, engine, get_db
+from src.dependencies import get_current_employee, require_manager
+from src.models import LeaveDuration, LeaveStatus, LeaveType
 
 Base.metadata.create_all(bind=engine)
 
@@ -49,7 +49,9 @@ class EmployeeOut(BaseModel):
     name: str = Field(description="Employee name")
     email: str = Field(description="Employee email")
     department: str = Field(description="Employee department")
-    manager_id: Optional[int] = Field(None, description="Manager employee ID, null for top-level")
+    manager_id: int | None = Field(
+        None, description="Manager employee ID, null for top-level"
+    )
 
 
 class LeaveBalanceOut(BaseModel):
@@ -63,15 +65,19 @@ class LeaveBalanceOut(BaseModel):
 
 class EmployeeWithBalancesOut(BaseModel):
     employee: EmployeeOut = Field(description="Employee record")
-    leave_balances: list[LeaveBalanceOut] = Field(description="Leave balances for the employee")
+    leave_balances: list[LeaveBalanceOut] = Field(
+        description="Leave balances for the employee"
+    )
 
 
 class LeaveRequestCreate(BaseModel):
     leave_type: LeaveType = Field(description="Leave type")
     start_date: date = Field(description="Leave start date (inclusive)")
     end_date: date = Field(description="Leave end date (inclusive)")
-    duration: LeaveDuration = Field(LeaveDuration.FULL, description="Full day, first half, or second half")
-    reason: Optional[str] = Field(None, description="Reason for leave")
+    duration: LeaveDuration = Field(
+        LeaveDuration.FULL, description="Full day, first half, or second half"
+    )
+    reason: str | None = Field(None, description="Reason for leave")
 
 
 class LeaveRequestOut(BaseModel):
@@ -81,17 +87,21 @@ class LeaveRequestOut(BaseModel):
     leave_type: LeaveType = Field(description="Leave type")
     start_date: date = Field(description="Leave start date")
     end_date: date = Field(description="Leave end date")
-    duration: LeaveDuration = Field(LeaveDuration.FULL, description="Full, first_half, or second_half")
-    reason: Optional[str] = Field(None, description="Reason for leave")
+    duration: LeaveDuration = Field(
+        LeaveDuration.FULL, description="Full, first_half, or second_half"
+    )
+    reason: str | None = Field(None, description="Reason for leave")
     status: LeaveStatus = Field(description="Request status")
-    reviewed_by: Optional[int] = Field(None, description="ID of manager who reviewed")
-    reviewed_at: Optional[datetime] = Field(None, description="Timestamp of review")
-    rejection_reason: Optional[str] = Field(None, description="Reason provided when rejecting")
+    reviewed_by: int | None = Field(None, description="ID of manager who reviewed")
+    reviewed_at: datetime | None = Field(None, description="Timestamp of review")
+    rejection_reason: str | None = Field(
+        None, description="Reason provided when rejecting"
+    )
 
 
 class LeaveRequestReview(BaseModel):
     decision: Literal["approved", "rejected"] = Field(description="Review decision")
-    rejection_reason: Optional[str] = Field(None, description="Reason for rejection")
+    rejection_reason: str | None = Field(None, description="Reason for rejection")
 
 
 class PaginatedLeaveRequests(BaseModel):
@@ -145,7 +155,9 @@ def list_employees(
     caller_id: int = Depends(get_current_employee),
     db: Session = Depends(get_db),
 ):
-    items, total = services.list_employees(db, caller_id=caller_id, page=page, page_size=page_size)
+    items, total = services.list_employees(
+        db, caller_id=caller_id, page=page, page_size=page_size
+    )
     return PaginatedEmployees(
         items=[EmployeeOut.model_validate(e) for e in items],
         total=total,
@@ -165,7 +177,9 @@ def get_employee(
     db: Session = Depends(get_db),
 ):
     try:
-        employee = services.get_employee(db, employee_id=employee_id, caller_id=caller_id)
+        employee = services.get_employee(
+            db, employee_id=employee_id, caller_id=caller_id
+        )
     except services.UnauthorizedAccessError as e:
         raise HTTPException(status_code=403, detail=str(e))
     if not employee:
@@ -212,11 +226,15 @@ def create_leave_request(
     tags=["leave-requests"],
 )
 def list_leave_requests(
-    employee_id: Optional[int] = Query(None, description="Filter by specific direct report"),
-    status: Optional[LeaveStatus] = Query(None, description="Filter by status"),
-    leave_type: Optional[LeaveType] = Query(None, description="Filter by leave type"),
-    from_date: Optional[date] = Query(None, description="Start of interval overlap filter"),
-    to_date: Optional[date] = Query(None, description="End of interval overlap filter"),
+    employee_id: int | None = Query(
+        None, description="Filter by specific direct report"
+    ),
+    status: LeaveStatus | None = Query(None, description="Filter by status"),
+    leave_type: LeaveType | None = Query(None, description="Filter by leave type"),
+    from_date: date | None = Query(
+        None, description="Start of interval overlap filter"
+    ),
+    to_date: date | None = Query(None, description="End of interval overlap filter"),
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(20, ge=1, le=100, description="Items per page"),
     caller_id: int = Depends(get_current_employee),
@@ -252,7 +270,9 @@ def get_leave_request(
     db: Session = Depends(get_db),
 ):
     try:
-        return services.get_leave_request(db, leave_request_id=leave_request_id, caller_id=caller_id)
+        return services.get_leave_request(
+            db, leave_request_id=leave_request_id, caller_id=caller_id
+        )
     except services.LeaveError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
@@ -316,12 +336,16 @@ def cancel_leave_request(
 )
 def get_leave_balances(
     employee_id: int,
-    year: Optional[int] = Query(None, description="Calendar year, defaults to current year"),
+    year: int | None = Query(
+        None, description="Calendar year, defaults to current year"
+    ),
     caller_id: int = Depends(get_current_employee),
     db: Session = Depends(get_db),
 ):
     try:
-        employee = services.get_employee(db, employee_id=employee_id, caller_id=caller_id)
+        employee = services.get_employee(
+            db, employee_id=employee_id, caller_id=caller_id
+        )
     except services.UnauthorizedAccessError as e:
         raise HTTPException(status_code=403, detail=str(e))
     if not employee:
@@ -338,7 +362,7 @@ def get_leave_balances(
     tags=["holidays"],
 )
 def list_holidays(
-    year: Optional[int] = Query(None, description="Filter by year"),
+    year: int | None = Query(None, description="Filter by year"),
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(50, ge=1, le=100, description="Items per page"),
     caller_id: int = Depends(get_current_employee),
@@ -365,7 +389,9 @@ def create_holiday(
     db: Session = Depends(get_db),
 ):
     try:
-        return services.create_holiday(db, holiday_date=body.date, name=body.name, caller_id=caller_id)
+        return services.create_holiday(
+            db, holiday_date=body.date, name=body.name, caller_id=caller_id
+        )
     except services.LeaveError as e:
         raise HTTPException(status_code=422, detail=str(e))
 
@@ -382,7 +408,10 @@ def update_holiday(
     db: Session = Depends(get_db),
 ):
     try:
-        return services.update_holiday(db, holiday_id=holiday_id, holiday_date=body.date, name=body.name, caller_id=caller_id)
+        return services.update_holiday(
+            db, holiday_id=holiday_id, holiday_date=body.date,
+            name=body.name, caller_id=caller_id,
+        )
     except services.NotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except services.LeaveError as e:

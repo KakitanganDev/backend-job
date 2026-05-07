@@ -3,7 +3,7 @@ PYTHON ?= python3
 .PHONY: install run test lint clean
 
 install:
-	$(PYTHON) -m pip install -r requirements.txt
+	$(PYTHON) -m pip install -e ".[dev]"
 
 run:
 	uvicorn src.app:app --reload --host 0.0.0.0 --port 8000

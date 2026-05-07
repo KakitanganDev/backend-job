@@ -4,19 +4,18 @@ Business logic layer for leave management.
 
 import logging
 from datetime import date, datetime, timedelta, timezone
-from typing import Optional
 
 from sqlalchemy import update
 from sqlalchemy.orm import Session
 
 from src.models import (
     Employee,
-    LeaveRequest,
     LeaveBalance,
-    PublicHoliday,
-    LeaveType,
-    LeaveStatus,
     LeaveDuration,
+    LeaveRequest,
+    LeaveStatus,
+    LeaveType,
+    PublicHoliday,
 )
 
 logger = logging.getLogger(__name__)
@@ -69,7 +68,8 @@ def count_working_days(
     end_date: date,
     duration: LeaveDuration,
 ) -> float:
-    """Count working days in [start_date, end_date], excluding weekends and public holidays."""
+    """Count working days in [start_date, end_date],
+    excluding weekends and public holidays."""
     if duration in (LeaveDuration.FIRST_HALF, LeaveDuration.SECOND_HALF):
         holiday = (
             db.query(PublicHoliday)
@@ -95,7 +95,9 @@ def count_working_days(
     return float(count)
 
 
-def _get_balance(db: Session, employee_id: int, leave_type: LeaveType, year: int) -> Optional[LeaveBalance]:
+def _get_balance(
+    db: Session, employee_id: int, leave_type: LeaveType, year: int
+) -> LeaveBalance | None:
     return (
         db.query(LeaveBalance)
         .filter(
@@ -116,7 +118,7 @@ def create_leave_request(
     start_date: date,
     end_date: date,
     duration: LeaveDuration = LeaveDuration.FULL,
-    reason: Optional[str] = None,
+    reason: str | None = None,
 ) -> LeaveRequest:
     today = _today()
 
@@ -132,7 +134,8 @@ def create_leave_request(
 
     if start_date.year != end_date.year:
         raise LeaveError(
-            "Cross-year leave is not supported. Please submit separate requests for each year."
+            "Cross-year leave is not supported. "
+            "Please submit separate requests for each year."
         )
 
     if duration in (LeaveDuration.FIRST_HALF, LeaveDuration.SECOND_HALF):
@@ -156,14 +159,19 @@ def create_leave_request(
         # Same-day half-day collision → specific message
         if (
             duration in (LeaveDuration.FIRST_HALF, LeaveDuration.SECOND_HALF)
-            and overlapping.duration in (LeaveDuration.FIRST_HALF, LeaveDuration.SECOND_HALF)
+            and overlapping.duration in (
+                LeaveDuration.FIRST_HALF, LeaveDuration.SECOND_HALF
+            )
             and start_date == overlapping.start_date
         ):
             raise OverlappingLeaveError(
                 "You already have a half-day leave on this date. "
-                "Cancel the existing half-day request and create a full-day request instead."
+                "Cancel the existing half-day request "
+                "and create a full-day request instead."
             )
-        raise OverlappingLeaveError("Leave request overlaps with an existing pending or approved request")
+        raise OverlappingLeaveError(
+            "Leave request overlaps with an existing pending or approved request"
+        )
 
     year = start_date.year
 
@@ -189,7 +197,8 @@ def create_leave_request(
         if result.rowcount == 0:
             db.rollback()
             raise InsufficientBalanceError(
-                f"Insufficient balance: {leave_type.value} has {balance.remaining_days} days remaining, "
+                f"Insufficient balance: {leave_type.value} has "
+                f"{balance.remaining_days} days remaining, "
                 f"but {requested_days} days were requested"
             )
     else:
@@ -219,10 +228,12 @@ def review_leave_request(
     leave_request_id: int,
     reviewer_id: int,
     decision: str,
-    rejection_reason: Optional[str] = None,
+    rejection_reason: str | None = None,
 ) -> LeaveRequest:
     if decision not in (LeaveStatus.APPROVED.value, LeaveStatus.REJECTED.value):
-        raise LeaveError(f"Invalid decision: {decision}. Must be 'approved' or 'rejected'")
+        raise LeaveError(
+            f"Invalid decision: {decision}. Must be 'approved' or 'rejected'"
+        )
 
     lr = db.query(LeaveRequest).filter(LeaveRequest.id == leave_request_id).first()
     if not lr:
@@ -244,14 +255,19 @@ def review_leave_request(
     else:
         # Reviewer must be the direct manager
         if requester.manager_id != reviewer_id:
-            raise NotDirectManagerError("Only the direct manager can review this leave request")
+            raise NotDirectManagerError(
+                "Only the direct manager can review this leave request"
+            )
 
     now = datetime.now(timezone.utc)
 
     # Conditional UPDATE — only succeeds if status is still 'pending'
     result = db.execute(
         update(LeaveRequest)
-        .where(LeaveRequest.id == leave_request_id, LeaveRequest.status == LeaveStatus.PENDING.value)
+        .where(
+            LeaveRequest.id == leave_request_id,
+            LeaveRequest.status == LeaveStatus.PENDING.value,
+        )
         .values(
             status=decision,
             reviewed_by=reviewer_id,
@@ -266,8 +282,12 @@ def review_leave_request(
 
     # Restore balance on rejection before committing — keeps both operations atomic
     if decision == LeaveStatus.REJECTED.value:
-        working_days = count_working_days(db, lr.start_date, lr.end_date, LeaveDuration(lr.duration))
-        balance = _get_balance(db, lr.employee_id, LeaveType(lr.leave_type), lr.start_date.year)
+        working_days = count_working_days(
+            db, lr.start_date, lr.end_date, LeaveDuration(lr.duration)
+        )
+        balance = _get_balance(
+            db, lr.employee_id, LeaveType(lr.leave_type), lr.start_date.year
+        )
         if balance:
             result = db.execute(
                 update(LeaveBalance)
@@ -279,11 +299,14 @@ def review_leave_request(
             )
             if result.rowcount == 0:
                 logger.warning(
-                    "Balance restore failed for leave request %s: used_days would go negative", lr.id
+                    "Balance restore failed for leave request %s: "
+                    "used_days would go negative",
+                    lr.id,
                 )
         else:
             logger.warning(
-                "Balance row missing during rejection of leave request %s: employee=%s type=%s year=%s",
+                "Balance row missing during rejection of leave request "
+                "%s: employee=%s type=%s year=%s",
                 lr.id, lr.employee_id, lr.leave_type, lr.start_date.year,
             )
 
@@ -318,8 +341,12 @@ def cancel_leave_request(
     )
 
     # Restore balance
-    working_days = count_working_days(db, lr.start_date, lr.end_date, LeaveDuration(lr.duration))
-    balance = _get_balance(db, lr.employee_id, LeaveType(lr.leave_type), lr.start_date.year)
+    working_days = count_working_days(
+        db, lr.start_date, lr.end_date, LeaveDuration(lr.duration)
+    )
+    balance = _get_balance(
+        db, lr.employee_id, LeaveType(lr.leave_type), lr.start_date.year
+    )
     if balance:
         db.execute(
             update(LeaveBalance)
@@ -331,7 +358,8 @@ def cancel_leave_request(
         )
     else:
         logger.warning(
-            "Balance row missing during cancellation of leave request %s: employee=%s type=%s year=%s",
+            "Balance row missing during cancellation of leave "
+            "request %s: employee=%s type=%s year=%s",
             lr.id, lr.employee_id, lr.leave_type, lr.start_date.year,
         )
 
@@ -363,11 +391,11 @@ def get_leave_request(
 def get_leave_requests(
     db: Session,
     caller_id: int,
-    employee_id: Optional[int] = None,
-    status: Optional[LeaveStatus] = None,
-    leave_type: Optional[LeaveType] = None,
-    from_date: Optional[date] = None,
-    to_date: Optional[date] = None,
+    employee_id: int | None = None,
+    status: LeaveStatus | None = None,
+    leave_type: LeaveType | None = None,
+    from_date: date | None = None,
+    to_date: date | None = None,
     page: int = 1,
     page_size: int = 20,
 ) -> tuple[list[LeaveRequest], int]:
@@ -413,7 +441,7 @@ def get_leave_requests(
 def get_leave_balances(
     db: Session,
     employee_id: int,
-    year: Optional[int] = None,
+    year: int | None = None,
 ) -> list[LeaveBalance]:
     if year is None:
         year = _today().year
@@ -451,7 +479,7 @@ def get_employee(
     db: Session,
     employee_id: int,
     caller_id: int,
-) -> Optional[Employee]:
+) -> Employee | None:
     employee = db.query(Employee).filter(Employee.id == employee_id).first()
     if employee is None:
         return None
@@ -467,7 +495,7 @@ def get_employee(
 
 def list_holidays(
     db: Session,
-    year: Optional[int] = None,
+    year: int | None = None,
     page: int = 1,
     page_size: int = 50,
 ) -> tuple[list[PublicHoliday], int]:
@@ -497,7 +525,11 @@ def create_holiday(
     if not caller or caller.manager_id is not None:
         raise LeaveError("Only managers can manage holidays")
 
-    existing = db.query(PublicHoliday).filter(PublicHoliday.date == holiday_date).first()
+    existing = (
+        db.query(PublicHoliday)
+        .filter(PublicHoliday.date == holiday_date)
+        .first()
+    )
     if existing:
         raise LeaveError(f"A holiday already exists on {holiday_date}")
 
@@ -553,15 +585,23 @@ def delete_holiday(db: Session, holiday_id: int, caller_id: int) -> None:
 # ── Seed Data ──────────────────────────────────────────────────────────────
 
 def seed_demo_data(db: Session) -> None:
-    """Seed database with demo employees, leave balances, and Malaysian public holidays."""
+    """Seed demo employees, leave balances, and Malaysian public holidays."""
     existing = db.query(Employee).first()
     if existing:
         return
 
     # Employees — Alice is top-level (manager_id=NULL)
-    alice = Employee(name="Alice Manager", email="alice@company.com", department="Engineering")
-    bob = Employee(name="Bob Engineer", email="bob@company.com", department="Engineering", manager=alice)
-    carol = Employee(name="Carol Engineer", email="carol@company.com", department="Engineering", manager=alice)
+    alice = Employee(
+        name="Alice Manager", email="alice@company.com", department="Engineering"
+    )
+    bob = Employee(
+        name="Bob Engineer", email="bob@company.com",
+        department="Engineering", manager=alice,
+    )
+    carol = Employee(
+        name="Carol Engineer", email="carol@company.com",
+        department="Engineering", manager=alice,
+    )
     db.add_all([alice, bob, carol])
     db.flush()
 
@@ -577,7 +617,10 @@ def seed_demo_data(db: Session) -> None:
 
     for emp in [alice, bob, carol]:
         for lt in leave_types:
-            total_days = 0.0 if lt == LeaveType.UNPAID else (14.0 if lt == LeaveType.ANNUAL else 12.0)
+            total_days = (
+                0.0 if lt == LeaveType.UNPAID
+                else (14.0 if lt == LeaveType.ANNUAL else 12.0)
+            )
             db.add(LeaveBalance(
                 employee_id=emp.id,
                 leave_type=lt.value,

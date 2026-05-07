@@ -1,7 +1,18 @@
-from datetime import date, datetime, timezone
-from sqlalchemy import Column, Integer, String, Float, Date, DateTime, ForeignKey, Index, UniqueConstraint
-from sqlalchemy.orm import relationship
 import enum
+from datetime import date, datetime, timezone
+
+from sqlalchemy import (
+    Column,
+    Date,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    UniqueConstraint,
+)
+from sqlalchemy.orm import relationship
 
 from src.database import Base
 
@@ -38,21 +49,34 @@ class Employee(Base):
     manager_id = Column(Integer, ForeignKey("employees.id"), nullable=True)
     joined_at = Column(Date, default=date.today)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    updated_at = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
 
     manager = relationship("Employee", remote_side="Employee.id")
-    leave_requests = relationship("LeaveRequest", back_populates="employee", foreign_keys="LeaveRequest.employee_id")
+    leave_requests = relationship(
+        "LeaveRequest",
+        back_populates="employee",
+        foreign_keys="LeaveRequest.employee_id",
+    )
     leave_balances = relationship("LeaveBalance", back_populates="employee")
 
 
 class LeaveRequest(Base):
     __tablename__ = "leave_requests"
     __table_args__ = (
-        Index("ix_leave_requests_employee_status_dates", "employee_id", "status", "start_date", "end_date"),
+        Index(
+            "ix_leave_requests_employee_status_dates",
+            "employee_id", "status", "start_date", "end_date",
+        ),
     )
 
     id = Column(Integer, primary_key=True, index=True)
-    employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False, index=True)
+    employee_id = Column(
+        Integer, ForeignKey("employees.id"), nullable=False, index=True
+    )
     leave_type = Column(String, nullable=False)
     start_date = Column(Date, nullable=False)
     end_date = Column(Date, nullable=False)
@@ -63,9 +87,15 @@ class LeaveRequest(Base):
     reviewed_at = Column(DateTime, nullable=True)
     rejection_reason = Column(String, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    updated_at = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
 
-    employee = relationship("Employee", back_populates="leave_requests", foreign_keys=[employee_id])
+    employee = relationship(
+        "Employee", back_populates="leave_requests", foreign_keys=[employee_id]
+    )
     reviewer = relationship("Employee", foreign_keys=[reviewed_by])
 
 
@@ -76,13 +106,19 @@ class LeaveBalance(Base):
     )
 
     id = Column(Integer, primary_key=True, index=True)
-    employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False, index=True)
+    employee_id = Column(
+        Integer, ForeignKey("employees.id"), nullable=False, index=True
+    )
     leave_type = Column(String, nullable=False)
     year = Column(Integer, nullable=False)
     total_days = Column(Float, nullable=False, default=0)
     used_days = Column(Float, nullable=False, default=0)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    updated_at = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
 
     employee = relationship("Employee", back_populates="leave_balances")
 
@@ -98,4 +134,8 @@ class PublicHoliday(Base):
     date = Column(Date, unique=True, nullable=False, index=True)
     name = Column(String, nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    updated_at = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )

@@ -5,51 +5,75 @@ All tests use in-memory SQLite with fresh seed data per test.
 """
 
 import unittest
-from datetime import date, datetime, timezone
+from datetime import date
 
-from sqlalchemy import create_engine, update as sa_update
+from sqlalchemy import create_engine
+from sqlalchemy import update as sa_update
 from sqlalchemy.orm import sessionmaker
 
-from src.database import Base
-from src.models import Employee, LeaveRequest, LeaveBalance, PublicHoliday, LeaveType, LeaveStatus, LeaveDuration
 from src import services
+from src.database import Base
+from src.models import (
+    Employee,
+    LeaveBalance,
+    LeaveDuration,
+    LeaveRequest,
+    LeaveType,
+    PublicHoliday,
+)
 from src.services import (
-    seed_demo_data,
-    create_leave_request,
-    review_leave_request,
-    cancel_leave_request,
-    get_leave_request,
-    get_leave_requests,
-    get_leave_balances,
-    list_employees,
-    get_employee,
-    count_working_days,
-    list_holidays,
-    create_holiday,
-    update_holiday,
-    delete_holiday,
-    LeaveError,
-    NotFoundError,
+    AlreadyReviewedError,
     InsufficientBalanceError,
+    LeaveError,
+    NotDirectManagerError,
+    NotFoundError,
     OverlappingLeaveError,
     SelfReviewError,
-    AlreadyReviewedError,
-    NotDirectManagerError,
     UnauthorizedAccessError,
+    cancel_leave_request,
+    count_working_days,
+    create_holiday,
+    create_leave_request,
+    delete_holiday,
+    get_employee,
+    get_leave_balances,
+    get_leave_request,
+    get_leave_requests,
+    list_employees,
+    list_holidays,
+    review_leave_request,
+    seed_demo_data,
+    update_holiday,
 )
 
 
 class TestLeaveServices(unittest.TestCase):
 
     def setUp(self):
-        self.engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
+        self.engine = create_engine(
+            "sqlite:///:memory:", connect_args={"check_same_thread": False}
+        )
         Base.metadata.create_all(bind=self.engine)
-        Session = sessionmaker(autocommit=False, autoflush=False, bind=self.engine)
-        self.db = Session()
+        session_factory = sessionmaker(
+            autocommit=False, autoflush=False, bind=self.engine
+        )
+        self.db = session_factory()
         seed_demo_data(self.db)
-        self.alice = self.db.query(Employee).filter(Employee.email == "alice@company.com").first()
-        self.bob = self.db.query(Employee).filter(Employee.email == "bob@company.com").first()
-        self.carol = self.db.query(Employee).filter(Employee.email == "carol@company.com").first()
+        self.alice = (
+            self.db.query(Employee)
+            .filter(Employee.email == "alice@company.com")
+            .first()
+        )
+        self.bob = (
+            self.db.query(Employee)
+            .filter(Employee.email == "bob@company.com")
+            .first()
+        )
+        self.carol = (
+            self.db.query(Employee)
+            .filter(Employee.email == "carol@company.com")
+            .first()
+        )
 
         # Freeze time so hardcoded May 2026 dates don't age into backdating failures
         self._original_today = services._today
@@ -511,7 +535,9 @@ class TestLeaveServices(unittest.TestCase):
             duration=LeaveDuration.FULL,
         )
 
-        result = cancel_leave_request(self.db, leave_request_id=lr.id, employee_id=self.bob.id)
+        result = cancel_leave_request(
+            self.db, leave_request_id=lr.id, employee_id=self.bob.id
+        )
         self.assertEqual(result.status, "cancelled")
 
         balance = self._bobs_balance()
@@ -538,7 +564,9 @@ class TestLeaveServices(unittest.TestCase):
             decision="approved",
         )
 
-        result = cancel_leave_request(self.db, leave_request_id=lr.id, employee_id=self.bob.id)
+        result = cancel_leave_request(
+            self.db, leave_request_id=lr.id, employee_id=self.bob.id
+        )
         self.assertEqual(result.status, "cancelled")
 
         balance = self._bobs_balance()
@@ -558,7 +586,9 @@ class TestLeaveServices(unittest.TestCase):
         )
 
         with self.assertRaises(LeaveError) as ctx:
-            cancel_leave_request(self.db, leave_request_id=lr.id, employee_id=self.carol.id)
+            cancel_leave_request(
+                self.db, leave_request_id=lr.id, employee_id=self.carol.id
+            )
         self.assertIn("own leave", str(ctx.exception))
 
     # ── 5.23 Cancel: rejected ───────────────────────────────────────────────
@@ -582,7 +612,9 @@ class TestLeaveServices(unittest.TestCase):
         )
 
         with self.assertRaises(LeaveError) as ctx:
-            cancel_leave_request(self.db, leave_request_id=lr.id, employee_id=self.bob.id)
+            cancel_leave_request(
+                self.db, leave_request_id=lr.id, employee_id=self.bob.id
+            )
         self.assertIn("only pending or approved", str(ctx.exception).lower())
 
     # ── 5.24 Cancel: already cancelled ──────────────────────────────────────
@@ -601,7 +633,9 @@ class TestLeaveServices(unittest.TestCase):
         cancel_leave_request(self.db, leave_request_id=lr.id, employee_id=self.bob.id)
 
         with self.assertRaises(LeaveError):
-            cancel_leave_request(self.db, leave_request_id=lr.id, employee_id=self.bob.id)
+            cancel_leave_request(
+                self.db, leave_request_id=lr.id, employee_id=self.bob.id
+            )
 
     # ── 5.25 Cancel: past start_date ────────────────────────────────────────
 
@@ -626,7 +660,9 @@ class TestLeaveServices(unittest.TestCase):
         self.db.commit()
 
         with self.assertRaises(LeaveError) as ctx:
-            cancel_leave_request(self.db, leave_request_id=lr.id, employee_id=self.bob.id)
+            cancel_leave_request(
+                self.db, leave_request_id=lr.id, employee_id=self.bob.id
+            )
         self.assertIn("already started", str(ctx.exception))
 
     # ── 5.26 List: scoping ──────────────────────────────────────────────────
@@ -636,11 +672,13 @@ class TestLeaveServices(unittest.TestCase):
         # Bob and Carol each create a leave request
         create_leave_request(
             self.db, employee_id=self.bob.id, leave_type=LeaveType.ANNUAL,
-            start_date=date(2026, 5, 11), end_date=date(2026, 5, 13), duration=LeaveDuration.FULL,
+            start_date=date(2026, 5, 11), end_date=date(2026, 5, 13),
+            duration=LeaveDuration.FULL,
         )
         create_leave_request(
             self.db, employee_id=self.carol.id, leave_type=LeaveType.SICK,
-            start_date=date(2026, 5, 14), end_date=date(2026, 5, 15), duration=LeaveDuration.FULL,
+            start_date=date(2026, 5, 14), end_date=date(2026, 5, 15),
+            duration=LeaveDuration.FULL,
         )
 
         alice_items, alice_total = get_leave_requests(self.db, caller_id=self.alice.id)
@@ -695,15 +733,21 @@ class TestLeaveServices(unittest.TestCase):
                     duration=LeaveDuration.FULL,
                 )
 
-        p1, t1 = get_leave_requests(self.db, caller_id=self.alice.id, page=1, page_size=1)
+        p1, t1 = get_leave_requests(
+            self.db, caller_id=self.alice.id, page=1, page_size=1
+        )
         self.assertEqual(len(p1), 1)
         self.assertGreater(t1, 1)
 
-        p2, t2 = get_leave_requests(self.db, caller_id=self.alice.id, page=2, page_size=1)
+        p2, t2 = get_leave_requests(
+            self.db, caller_id=self.alice.id, page=2, page_size=1
+        )
         self.assertEqual(len(p2), 1)
 
         # Page beyond data
-        p99, t99 = get_leave_requests(self.db, caller_id=self.alice.id, page=99, page_size=20)
+        p99, t99 = get_leave_requests(
+            self.db, caller_id=self.alice.id, page=99, page_size=20
+        )
         self.assertEqual(len(p99), 0)
 
     # ── 5.30 List employees: direct reports ─────────────────────────────────
@@ -734,7 +778,9 @@ class TestLeaveServices(unittest.TestCase):
     def test_get_leave_balances_empty(self):
         """New employee with no balance rows → empty list."""
         # Delete all balance rows for Bob
-        self.db.query(LeaveBalance).filter(LeaveBalance.employee_id == self.bob.id).delete()
+        self.db.query(LeaveBalance).filter(
+            LeaveBalance.employee_id == self.bob.id
+        ).delete()
         self.db.commit()
 
         balances = get_leave_balances(self.db, employee_id=self.bob.id)
@@ -816,31 +862,46 @@ class TestLeaveServices(unittest.TestCase):
         """Excludes weekends, excludes holidays, all-weekend range returns 0."""
         # Mon–Wed, full → 3
         self.assertEqual(
-            count_working_days(self.db, date(2026, 5, 11), date(2026, 5, 13), LeaveDuration.FULL),
+            count_working_days(
+                self.db, date(2026, 5, 11), date(2026, 5, 13),
+                LeaveDuration.FULL,
+            ),
             3.0,
         )
 
         # Fri–Mon, full → 2 (Fri, Mon; Sat/Sun excluded)
         self.assertEqual(
-            count_working_days(self.db, date(2026, 5, 15), date(2026, 5, 18), LeaveDuration.FULL),
+            count_working_days(
+                self.db, date(2026, 5, 15), date(2026, 5, 18),
+                LeaveDuration.FULL,
+            ),
             2.0,
         )
 
         # Wesak Day (May 20, Wed) → 0 working days for a single holiday date
         self.assertEqual(
-            count_working_days(self.db, date(2026, 5, 20), date(2026, 5, 20), LeaveDuration.FULL),
+            count_working_days(
+                self.db, date(2026, 5, 20), date(2026, 5, 20),
+                LeaveDuration.FULL,
+            ),
             0.0,
         )
 
         # Sat–Sun → 0
         self.assertEqual(
-            count_working_days(self.db, date(2026, 5, 16), date(2026, 5, 17), LeaveDuration.FULL),
+            count_working_days(
+                self.db, date(2026, 5, 16), date(2026, 5, 17),
+                LeaveDuration.FULL,
+            ),
             0.0,
         )
 
         # Half-day → always 0.5 regardless of range length
         self.assertEqual(
-            count_working_days(self.db, date(2026, 5, 11), date(2026, 5, 11), LeaveDuration.FIRST_HALF),
+            count_working_days(
+                self.db, date(2026, 5, 11), date(2026, 5, 11),
+                LeaveDuration.FIRST_HALF,
+            ),
             0.5,
         )
 
@@ -874,7 +935,9 @@ class TestLeaveServices(unittest.TestCase):
             start_date=date(2026, 5, 11), end_date=date(2026, 5, 13),
             duration=LeaveDuration.FULL,
         )
-        result = get_leave_request(self.db, leave_request_id=lr.id, caller_id=self.bob.id)
+        result = get_leave_request(
+            self.db, leave_request_id=lr.id, caller_id=self.bob.id
+        )
         self.assertEqual(result.id, lr.id)
 
     def test_get_leave_request_by_manager(self):
@@ -884,7 +947,9 @@ class TestLeaveServices(unittest.TestCase):
             start_date=date(2026, 5, 11), end_date=date(2026, 5, 13),
             duration=LeaveDuration.FULL,
         )
-        result = get_leave_request(self.db, leave_request_id=lr.id, caller_id=self.alice.id)
+        result = get_leave_request(
+            self.db, leave_request_id=lr.id, caller_id=self.alice.id
+        )
         self.assertEqual(result.id, lr.id)
 
     def test_get_leave_request_outsider_blocked(self):
@@ -967,7 +1032,9 @@ class TestLeaveServices(unittest.TestCase):
 
     def test_cancel_leave_request_not_found(self):
         with self.assertRaises(NotFoundError) as ctx:
-            cancel_leave_request(self.db, leave_request_id=9999, employee_id=self.bob.id)
+            cancel_leave_request(
+                self.db, leave_request_id=9999, employee_id=self.bob.id
+            )
         self.assertIn("not found", str(ctx.exception))
 
 
