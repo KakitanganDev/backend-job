@@ -8,15 +8,15 @@ Priority order: database → service → middleware → API → unit tests → O
 
 | # | Task | Status |
 |---|------|--------|
-| 1.1 | Add `LeaveDuration` enum — `full`, `first_half`, `second_half` | Pending |
-| 1.2 | Rename `approved_by` → `reviewed_by`, `approved_at` → `reviewed_at` on `LeaveRequest` | Pending |
-| 1.3 | Add `rejection_reason VARCHAR NULL` to `LeaveRequest` | Pending |
-| 1.4 | Add `duration VARCHAR NOT NULL DEFAULT 'full'` to `LeaveRequest` | Pending |
-| 1.5 | Change `SqlEnum` → `String` on `leave_type`, `status` columns (per DESIGN.md 4.15 — portable, human-readable raw SQL) | Pending |
-| 1.6 | Add composite index `ix_leave_requests_employee_status_dates` on `(employee_id, status, start_date, end_date)` | Pending |
-| 1.7 | Add UNIQUE constraint `uq_balance` on `LeaveBalance(employee_id, leave_type, year)` | Pending |
-| 1.8 | Create `PublicHoliday` model — `id` PK, `date` DATE UNIQUE NOT NULL, `name` VARCHAR NOT NULL, `created_at`, `updated_at` | Pending |
-| 1.9 | Replace all `datetime.utcnow` → `datetime.now(datetime.UTC)` across all models | Pending |
+| 1.1 | Add `LeaveDuration` enum — `full`, `first_half`, `second_half` | Complete |
+| 1.2 | Rename `approved_by` → `reviewed_by`, `approved_at` → `reviewed_at` on `LeaveRequest` | Complete |
+| 1.3 | Add `rejection_reason VARCHAR NULL` to `LeaveRequest` | Complete |
+| 1.4 | Add `duration VARCHAR NOT NULL DEFAULT 'full'` to `LeaveRequest` | Complete |
+| 1.5 | Change `SqlEnum` → `String` on `leave_type`, `status` columns (per DESIGN.md 4.15 — portable, human-readable raw SQL) | Complete |
+| 1.6 | Add composite index `ix_leave_requests_employee_status_dates` on `(employee_id, status, start_date, end_date)` | Complete |
+| 1.7 | Add UNIQUE constraint `uq_balance` on `LeaveBalance(employee_id, leave_type, year)` | Complete |
+| 1.8 | Create `PublicHoliday` model — `id` PK, `date` DATE UNIQUE NOT NULL, `name` VARCHAR NOT NULL, `created_at`, `updated_at` | Complete |
+| 1.9 | Replace all `datetime.utcnow` → `datetime.now(datetime.UTC)` across all models | Complete |
 
 ---
 
@@ -24,20 +24,20 @@ Priority order: database → service → middleware → API → unit tests → O
 
 | # | Task | Status |
 |---|------|--------|
-| 2.1 | Create `count_working_days(start_date, end_date, duration, db)` utility — counts Mon–Fri days in range, excludes dates present in `public_holidays` table. Returns float (0.5 for half-day, N for full-day range). | Pending |
-| 2.2 | Implement `create_leave_request` — validate: employee exists, `start_date >= today`, `start_date <= end_date`, cross-year reject (422 — split into two requests), half-day must be single-day, half-day must be weekday, overlap check (all types + durations, only `pending`/`approved`, `first_half` and `second_half` on same day collide → reject with message to cancel and create full-day), balance check (unpaid skips cap, all types require a balance row to exist), immediate `used_days` increment | Pending |
-| 2.3 | Rename & implement `review_leave_request` (was `approve_leave_request`) — validate: request exists, status is `pending`, reviewer is the direct manager (`requester.manager_id == reviewer.id`) OR reviewer is top-level with `manager_id IS NULL` doing self-review, reviewer != requester (unless top-level). On approve: no balance change (already deducted). On reject: restore `used_days`. Use conditional `UPDATE ... WHERE status='pending'` + rowcount check for concurrency safety. `rejection_reason` optional. | Pending |
-| 2.4 | Implement `cancel_leave_request` — validate: caller is owner, status is `pending` or `approved` (not `rejected`/`cancelled`), `start_date` is not in the past. Restore balance via conditional UPDATE. If balance row missing, still cancel but log warning (graceful degradation). | Pending |
-| 2.5 | Implement `get_leave_request` — fetch single leave request by ID. Auth scope: caller must be the request owner or the owner's direct manager (via `manager_id`). 404 if not found or outside scope. | Pending |
-| 2.6 | Implement `get_leave_requests` — scope to caller's own requests + direct reports' requests (where `manager_id == caller_id`). `employee_id` filter narrows to a specific direct report. Date filter uses interval overlap: `start_date <= to_date AND end_date >= from_date`. Offset-based pagination. | Pending |
-| 2.7 | Implement `get_leave_balances` — filter by employee_id, year defaults to current year | Pending |
-| 2.8 | Implement `list_employees` — returns direct reports only (`manager_id == caller_id`), paginated | Pending |
-| 2.9 | Implement `get_employee` — fetch employee + balances, 404 if not found | Pending |
-| 2.10 | Implement `list_holidays` — optional `year` filter, paginated | Pending |
-| 2.11 | Implement `create_holiday` — validate no duplicate date | Pending |
-| 2.12 | Implement `update_holiday` — validate holiday exists, no duplicate date (excluding self) | Pending |
-| 2.13 | Implement `delete_holiday` — validate holiday exists | Pending |
-| 2.14 | Update `seed_demo_data` — ensure Alice has `manager_id=NULL`, add unpaid leave balance rows (total_days=0) for all employees, add Malaysian public holidays for 2026 | Pending |
+| 2.1 | Create `count_working_days(start_date, end_date, duration, db)` utility — counts Mon–Fri days in range, excludes dates present in `public_holidays` table. Returns float (0.5 for half-day, N for full-day range). | Complete |
+| 2.2 | Implement `create_leave_request` — validate: employee exists, `start_date >= today`, `start_date <= end_date`, cross-year reject (422 — split into two requests), half-day must be single-day, half-day must be weekday, overlap check (all types + durations, only `pending`/`approved`, `first_half` and `second_half` on same day collide → reject with message to cancel and create full-day), balance check (unpaid skips cap, all types require a balance row to exist), immediate `used_days` increment | Complete |
+| 2.3 | Rename & implement `review_leave_request` (was `approve_leave_request`) — validate: request exists, status is `pending`, reviewer is the direct manager (`requester.manager_id == reviewer.id`) OR reviewer is top-level with `manager_id IS NULL` doing self-review, reviewer != requester (unless top-level). On approve: no balance change (already deducted). On reject: restore `used_days`. Use conditional `UPDATE ... WHERE status='pending'` + rowcount check for concurrency safety. `rejection_reason` optional. | Complete |
+| 2.4 | Implement `cancel_leave_request` — validate: caller is owner, status is `pending` or `approved` (not `rejected`/`cancelled`), `start_date` is not in the past. Restore balance via conditional UPDATE. If balance row missing, still cancel but log warning (graceful degradation). | Complete |
+| 2.5 | Implement `get_leave_request` — fetch single leave request by ID. Auth scope: caller must be the request owner or the owner's direct manager (via `manager_id`). 404 if not found or outside scope. | Complete |
+| 2.6 | Implement `get_leave_requests` — scope to caller's own requests + direct reports' requests (where `manager_id == caller_id`). `employee_id` filter narrows to a specific direct report. Date filter uses interval overlap: `start_date <= to_date AND end_date >= from_date`. Offset-based pagination. | Complete |
+| 2.7 | Implement `get_leave_balances` — filter by employee_id, year defaults to current year | Complete |
+| 2.8 | Implement `list_employees` — returns direct reports only (`manager_id == caller_id`), paginated | Complete |
+| 2.9 | Implement `get_employee` — fetch employee + balances, 404 if not found | Complete |
+| 2.10 | Implement `list_holidays` — optional `year` filter, paginated | Complete |
+| 2.11 | Implement `create_holiday` — validate no duplicate date | Complete |
+| 2.12 | Implement `update_holiday` — validate holiday exists, no duplicate date (excluding self) | Complete |
+| 2.13 | Implement `delete_holiday` — validate holiday exists | Complete |
+| 2.14 | Update `seed_demo_data` — ensure Alice has `manager_id=NULL`, add unpaid leave balance rows (total_days=0) for all employees, add Malaysian public holidays for 2026 | Complete |
 
 ---
 

@@ -1,18 +1,28 @@
 """
 Business logic layer for leave management.
-
-Implement the following service functions to handle leave request workflows.
-Each function should raise appropriate exceptions for invalid operations
-(e.g., overlapping leave, insufficient balance, self-approval).
 """
 
-from datetime import date, datetime
+import logging
+from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
+from sqlalchemy import update
 from sqlalchemy.orm import Session
 
-from src.models import Employee, LeaveRequest, LeaveBalance, LeaveType, LeaveStatus
+from src.models import (
+    Employee,
+    LeaveRequest,
+    LeaveBalance,
+    PublicHoliday,
+    LeaveType,
+    LeaveStatus,
+    LeaveDuration,
+)
 
+logger = logging.getLogger(__name__)
+
+
+# ── Exceptions ─────────────────────────────────────────────────────────────
 
 class LeaveError(Exception):
     pass
@@ -26,13 +36,60 @@ class OverlappingLeaveError(LeaveError):
     pass
 
 
-class SelfApprovalError(LeaveError):
+class SelfReviewError(LeaveError):
     pass
 
 
-class CannotModifyApprovedLeaveError(LeaveError):
+class AlreadyReviewedError(LeaveError):
     pass
 
+
+class NotDirectManagerError(LeaveError):
+    pass
+
+
+# ── Utility ────────────────────────────────────────────────────────────────
+
+def count_working_days(
+    db: Session,
+    start_date: date,
+    end_date: date,
+    duration: LeaveDuration,
+) -> float:
+    """Count working days in [start_date, end_date], excluding weekends and public holidays."""
+    if duration in (LeaveDuration.FIRST_HALF, LeaveDuration.SECOND_HALF):
+        return 0.5
+
+    holiday_dates = {
+        row[0]
+        for row in db.query(PublicHoliday.date)
+        .filter(PublicHoliday.date >= start_date, PublicHoliday.date <= end_date)
+        .all()
+    }
+
+    current = start_date
+    count = 0
+    while current <= end_date:
+        if current.weekday() < 5 and current not in holiday_dates:
+            count += 1
+        current += timedelta(days=1)
+
+    return float(count)
+
+
+def _get_balance(db: Session, employee_id: int, leave_type: LeaveType, year: int) -> Optional[LeaveBalance]:
+    return (
+        db.query(LeaveBalance)
+        .filter(
+            LeaveBalance.employee_id == employee_id,
+            LeaveBalance.leave_type == leave_type,
+            LeaveBalance.year == year,
+        )
+        .first()
+    )
+
+
+# ── Leave Requests ─────────────────────────────────────────────────────────
 
 def create_leave_request(
     db: Session,
@@ -40,37 +97,167 @@ def create_leave_request(
     leave_type: LeaveType,
     start_date: date,
     end_date: date,
+    duration: LeaveDuration = LeaveDuration.FULL,
     reason: Optional[str] = None,
 ) -> LeaveRequest:
-    """
-    Create a new leave request.
-    Must validate:
-    - Employee exists
-    - start_date <= end_date
-    - start_date >= today (no back-dating)
-    - No overlapping leave requests for the same employee
-    - Employee has sufficient leave balance for the requested type
-    - end_date - start_date >= 0 (at least 1 day — or handle half-day logic)
-    """
-    raise NotImplementedError("Candidate must implement this")
+    today = date.today()
+
+    employee = db.query(Employee).filter(Employee.id == employee_id).first()
+    if not employee:
+        raise LeaveError("Employee not found")
+
+    if start_date < today:
+        raise LeaveError("Cannot back-date leave requests")
+
+    if start_date > end_date:
+        raise LeaveError("Start date must be before or equal to end date")
+
+    if start_date.year != end_date.year:
+        raise LeaveError(
+            "Cross-year leave is not supported. Please submit separate requests for each year."
+        )
+
+    if duration in (LeaveDuration.FIRST_HALF, LeaveDuration.SECOND_HALF):
+        if start_date != end_date:
+            raise LeaveError("Half-day leave must be a single day")
+        if start_date.weekday() >= 5:
+            raise LeaveError("Cannot take half-day leave on a non-working day")
+
+    # Overlap check — all types and durations, only pending/approved
+    overlapping = (
+        db.query(LeaveRequest)
+        .filter(
+            LeaveRequest.employee_id == employee_id,
+            LeaveRequest.status.in_([LeaveStatus.PENDING, LeaveStatus.APPROVED]),
+            LeaveRequest.start_date <= end_date,
+            LeaveRequest.end_date >= start_date,
+        )
+        .first()
+    )
+    if overlapping:
+        # Same-day half-day collision → specific message
+        if (
+            duration in (LeaveDuration.FIRST_HALF, LeaveDuration.SECOND_HALF)
+            and overlapping.duration in (LeaveDuration.FIRST_HALF, LeaveDuration.SECOND_HALF)
+            and start_date == overlapping.start_date
+        ):
+            raise OverlappingLeaveError(
+                "You already have a half-day leave on this date. "
+                "Cancel the existing half-day request and create a full-day request instead."
+            )
+        raise OverlappingLeaveError("Leave request overlaps with an existing pending or approved request")
+
+    year = start_date.year
+
+    # Working days to deduct
+    requested_days = count_working_days(db, start_date, end_date, duration)
+    if requested_days == 0:
+        raise LeaveError("No working days in the requested date range")
+
+    # Balance check
+    balance = _get_balance(db, employee_id, leave_type, year)
+    if not balance:
+        raise LeaveError(f"No leave balance found for {leave_type.value} in {year}")
+
+    if leave_type != LeaveType.UNPAID:
+        if balance.remaining_days < requested_days:
+            raise InsufficientBalanceError(
+                f"Insufficient balance: {leave_type.value} has {balance.remaining_days} days remaining, "
+                f"but {requested_days} days were requested"
+            )
+
+    # Deduct balance immediately
+    balance.used_days += requested_days
+
+    lr = LeaveRequest(
+        employee_id=employee_id,
+        leave_type=leave_type.value,
+        start_date=start_date,
+        end_date=end_date,
+        duration=duration.value,
+        reason=reason,
+        status=LeaveStatus.PENDING.value,
+    )
+    db.add(lr)
+    db.commit()
+    db.refresh(lr)
+    return lr
 
 
-def approve_leave_request(
+def review_leave_request(
     db: Session,
     leave_request_id: int,
-    approver_id: int,
-    decision: LeaveStatus,
+    reviewer_id: int,
+    decision: str,
+    rejection_reason: Optional[str] = None,
 ) -> LeaveRequest:
-    """
-    Approve or reject a pending leave request.
-    Must validate:
-    - Leave request exists and is in PENDING status
-    - Approver is the employee's manager (or has approval authority)
-    - Approver is not the leave requester (no self-approval)
-    - On approval: deduct from leave balance
-    - On rejection: record reason in comment field if needed
-    """
-    raise NotImplementedError("Candidate must implement this")
+    lr = db.query(LeaveRequest).filter(LeaveRequest.id == leave_request_id).first()
+    if not lr:
+        raise LeaveError("Leave request not found")
+
+    if lr.status != LeaveStatus.PENDING.value:
+        raise AlreadyReviewedError("Leave request has already been reviewed")
+
+    reviewer = db.query(Employee).filter(Employee.id == reviewer_id).first()
+    if not reviewer:
+        raise LeaveError("Reviewer not found")
+
+    requester = db.query(Employee).filter(Employee.id == lr.employee_id).first()
+
+    # Self-review: only allowed for top-level employees (manager_id IS NULL)
+    if reviewer_id == lr.employee_id:
+        if reviewer.manager_id is not None:
+            raise SelfReviewError("You cannot review your own leave request")
+    else:
+        # Reviewer must be the direct manager
+        if requester.manager_id != reviewer_id:
+            raise NotDirectManagerError("Only the direct manager can review this leave request")
+
+    now = datetime.now(timezone.utc)
+
+    # Conditional UPDATE — only succeeds if status is still 'pending'
+    result = db.execute(
+        update(LeaveRequest)
+        .where(LeaveRequest.id == leave_request_id, LeaveRequest.status == LeaveStatus.PENDING.value)
+        .values(
+            status=decision,
+            reviewed_by=reviewer_id,
+            reviewed_at=now,
+            rejection_reason=rejection_reason,
+        )
+    )
+    if result.rowcount == 0:
+        db.rollback()
+        raise AlreadyReviewedError("Leave request was already reviewed concurrently")
+
+    db.commit()
+    db.refresh(lr)
+
+    if decision == LeaveStatus.REJECTED.value:
+        working_days = count_working_days(db, lr.start_date, lr.end_date, LeaveDuration(lr.duration))
+        balance = _get_balance(db, lr.employee_id, LeaveType(lr.leave_type), lr.start_date.year)
+        if balance:
+            result = db.execute(
+                update(LeaveBalance)
+                .where(
+                    LeaveBalance.id == balance.id,
+                    LeaveBalance.used_days >= working_days,
+                )
+                .values(used_days=LeaveBalance.used_days - working_days)
+            )
+            if result.rowcount == 0:
+                logger.warning(
+                    "Balance restore failed for leave request %s: used_days would go negative", lr.id
+                )
+            db.commit()
+            db.refresh(lr)
+        else:
+            logger.warning(
+                "Balance row missing during rejection of leave request %s: employee=%s type=%s year=%s",
+                lr.id, lr.employee_id, lr.leave_type, lr.start_date.year,
+            )
+
+    return lr
 
 
 def cancel_leave_request(
@@ -78,17 +265,72 @@ def cancel_leave_request(
     leave_request_id: int,
     employee_id: int,
 ) -> LeaveRequest:
-    """
-    Cancel a leave request.
-    - Only the owner can cancel
-    - Can only cancel PENDING or APPROVED leaves
-    - Cancelling an approved leave restores balance
-    """
-    raise NotImplementedError("Candidate must implement this")
+    lr = db.query(LeaveRequest).filter(LeaveRequest.id == leave_request_id).first()
+    if not lr:
+        raise LeaveError("Leave request not found")
+
+    if lr.employee_id != employee_id:
+        raise LeaveError("You can only cancel your own leave requests")
+
+    if lr.status not in (LeaveStatus.PENDING.value, LeaveStatus.APPROVED.value):
+        raise LeaveError("Only pending or approved leave requests can be cancelled")
+
+    if lr.start_date < date.today():
+        raise LeaveError("Cannot cancel a leave request that has already started")
+
+    now = datetime.now(timezone.utc)
+    db.execute(
+        update(LeaveRequest)
+        .where(LeaveRequest.id == leave_request_id)
+        .values(status=LeaveStatus.CANCELLED.value, updated_at=now)
+    )
+
+    # Restore balance
+    working_days = count_working_days(db, lr.start_date, lr.end_date, LeaveDuration(lr.duration))
+    balance = _get_balance(db, lr.employee_id, LeaveType(lr.leave_type), lr.start_date.year)
+    if balance:
+        db.execute(
+            update(LeaveBalance)
+            .where(
+                LeaveBalance.id == balance.id,
+                LeaveBalance.used_days >= working_days,
+            )
+            .values(used_days=LeaveBalance.used_days - working_days)
+        )
+    else:
+        logger.warning(
+            "Balance row missing during cancellation of leave request %s: employee=%s type=%s year=%s",
+            lr.id, lr.employee_id, lr.leave_type, lr.start_date.year,
+        )
+
+    db.commit()
+    db.refresh(lr)
+    return lr
+
+
+def get_leave_request(
+    db: Session,
+    leave_request_id: int,
+    caller_id: int,
+) -> LeaveRequest:
+    lr = db.query(LeaveRequest).filter(LeaveRequest.id == leave_request_id).first()
+    if not lr:
+        raise LeaveError("Leave request not found")
+
+    # Caller must be the owner or the owner's direct manager
+    if lr.employee_id == caller_id:
+        return lr
+
+    owner = db.query(Employee).filter(Employee.id == lr.employee_id).first()
+    if owner and owner.manager_id == caller_id:
+        return lr
+
+    raise LeaveError("Leave request not found")
 
 
 def get_leave_requests(
     db: Session,
+    caller_id: int,
     employee_id: Optional[int] = None,
     status: Optional[LeaveStatus] = None,
     leave_type: Optional[LeaveType] = None,
@@ -97,11 +339,43 @@ def get_leave_requests(
     page: int = 1,
     page_size: int = 20,
 ) -> tuple[list[LeaveRequest], int]:
-    """
-    List leave requests with filtering and pagination.
-    Returns (items, total_count).
-    """
-    raise NotImplementedError("Candidate must implement this")
+    # Scope: caller's own requests + direct reports' requests
+    direct_report_ids = [
+        row[0]
+        for row in db.query(Employee.id)
+        .filter(Employee.manager_id == caller_id)
+        .all()
+    ]
+    visible_ids = {caller_id} | set(direct_report_ids)
+
+    query = db.query(LeaveRequest).filter(LeaveRequest.employee_id.in_(visible_ids))
+
+    if employee_id is not None:
+        if employee_id not in visible_ids:
+            return [], 0
+        query = query.filter(LeaveRequest.employee_id == employee_id)
+
+    if status is not None:
+        query = query.filter(LeaveRequest.status == status.value)
+
+    if leave_type is not None:
+        query = query.filter(LeaveRequest.leave_type == leave_type.value)
+
+    if from_date is not None and to_date is not None:
+        query = query.filter(
+            LeaveRequest.start_date <= to_date,
+            LeaveRequest.end_date >= from_date,
+        )
+
+    total = query.count()
+    items = (
+        query.order_by(LeaveRequest.created_at.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        .all()
+    )
+
+    return items, total
 
 
 def get_leave_balances(
@@ -109,20 +383,127 @@ def get_leave_balances(
     employee_id: int,
     year: Optional[int] = None,
 ) -> list[LeaveBalance]:
-    """
-    Get leave balances for an employee for a given year (defaults to current year).
-    """
-    raise NotImplementedError("Candidate must implement this")
+    if year is None:
+        year = date.today().year
 
+    return (
+        db.query(LeaveBalance)
+        .filter(
+            LeaveBalance.employee_id == employee_id,
+            LeaveBalance.year == year,
+        )
+        .all()
+    )
+
+
+# ── Employees ──────────────────────────────────────────────────────────────
+
+def list_employees(
+    db: Session,
+    caller_id: int,
+    page: int = 1,
+    page_size: int = 20,
+) -> tuple[list[Employee], int]:
+    query = db.query(Employee).filter(Employee.manager_id == caller_id)
+    total = query.count()
+    items = (
+        query.order_by(Employee.id)
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        .all()
+    )
+    return items, total
+
+
+def get_employee(
+    db: Session,
+    employee_id: int,
+) -> Optional[Employee]:
+    return db.query(Employee).filter(Employee.id == employee_id).first()
+
+
+# ── Holidays ───────────────────────────────────────────────────────────────
+
+def list_holidays(
+    db: Session,
+    year: Optional[int] = None,
+    page: int = 1,
+    page_size: int = 50,
+) -> tuple[list[PublicHoliday], int]:
+    query = db.query(PublicHoliday)
+    if year is not None:
+        query = query.filter(
+            PublicHoliday.date >= date(year, 1, 1),
+            PublicHoliday.date <= date(year, 12, 31),
+        )
+    total = query.count()
+    items = (
+        query.order_by(PublicHoliday.date)
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        .all()
+    )
+    return items, total
+
+
+def create_holiday(
+    db: Session,
+    holiday_date: date,
+    name: str,
+) -> PublicHoliday:
+    existing = db.query(PublicHoliday).filter(PublicHoliday.date == holiday_date).first()
+    if existing:
+        raise LeaveError(f"A holiday already exists on {holiday_date}")
+
+    holiday = PublicHoliday(date=holiday_date, name=name)
+    db.add(holiday)
+    db.commit()
+    db.refresh(holiday)
+    return holiday
+
+
+def update_holiday(
+    db: Session,
+    holiday_id: int,
+    holiday_date: date,
+    name: str,
+) -> PublicHoliday:
+    holiday = db.query(PublicHoliday).filter(PublicHoliday.id == holiday_id).first()
+    if not holiday:
+        raise LeaveError("Holiday not found")
+
+    dup = (
+        db.query(PublicHoliday)
+        .filter(PublicHoliday.date == holiday_date, PublicHoliday.id != holiday_id)
+        .first()
+    )
+    if dup:
+        raise LeaveError(f"A holiday already exists on {holiday_date}")
+
+    holiday.date = holiday_date
+    holiday.name = name
+    db.commit()
+    db.refresh(holiday)
+    return holiday
+
+
+def delete_holiday(db: Session, holiday_id: int) -> None:
+    holiday = db.query(PublicHoliday).filter(PublicHoliday.id == holiday_id).first()
+    if not holiday:
+        raise LeaveError("Holiday not found")
+    db.delete(holiday)
+    db.commit()
+
+
+# ── Seed Data ──────────────────────────────────────────────────────────────
 
 def seed_demo_data(db: Session) -> None:
-    """Seed database with demo employees and leave balances for testing."""
-    from src.models import LeaveType, LeaveBalance
-
+    """Seed database with demo employees, leave balances, and Malaysian public holidays."""
     existing = db.query(Employee).first()
     if existing:
         return
 
+    # Employees — Alice is top-level (manager_id=NULL)
     alice = Employee(name="Alice Manager", email="alice@company.com", department="Engineering")
     bob = Employee(name="Bob Engineer", email="bob@company.com", department="Engineering", manager=alice)
     carol = Employee(name="Carol Engineer", email="carol@company.com", department="Engineering", manager=alice)
@@ -130,11 +511,44 @@ def seed_demo_data(db: Session) -> None:
     db.flush()
 
     year = date.today().year
-    balances = [
-        LeaveBalance(employee_id=bob.id, leave_type=LeaveType.ANNUAL, year=year, total_days=14),
-        LeaveBalance(employee_id=bob.id, leave_type=LeaveType.SICK, year=year, total_days=12),
-        LeaveBalance(employee_id=carol.id, leave_type=LeaveType.ANNUAL, year=year, total_days=14),
-        LeaveBalance(employee_id=carol.id, leave_type=LeaveType.SICK, year=year, total_days=12),
+    leave_types = [
+        LeaveType.ANNUAL,
+        LeaveType.SICK,
+        LeaveType.PERSONAL,
+        LeaveType.MATERNITY,
+        LeaveType.PATERNITY,
+        LeaveType.UNPAID,
     ]
-    db.add_all(balances)
+
+    for emp in [alice, bob, carol]:
+        for lt in leave_types:
+            total_days = 0.0 if lt == LeaveType.UNPAID else (14.0 if lt == LeaveType.ANNUAL else 12.0)
+            db.add(LeaveBalance(
+                employee_id=emp.id,
+                leave_type=lt.value,
+                year=year,
+                total_days=total_days,
+                used_days=0.0,
+            ))
+
+    # Malaysian public holidays for 2026
+    malaysian_holidays = [
+        ("2026-01-01", "New Year's Day"),
+        ("2026-02-17", "Chinese New Year"),
+        ("2026-02-18", "Chinese New Year Holiday"),
+        ("2026-03-20", "Hari Raya Puasa"),
+        ("2026-03-21", "Hari Raya Puasa Holiday"),
+        ("2026-05-01", "Labour Day"),
+        ("2026-05-20", "Wesak Day"),
+        ("2026-06-07", "Agong's Birthday"),
+        ("2026-05-27", "Hari Raya Haji"),
+        ("2026-08-31", "Merdeka Day"),
+        ("2026-09-16", "Malaysia Day"),
+        ("2026-10-31", "Deepavali"),
+        ("2026-12-25", "Christmas Day"),
+        ("2026-10-19", "Awal Muharram"),
+    ]
+    for holiday_date, name in malaysian_holidays:
+        db.add(PublicHoliday(date=date.fromisoformat(holiday_date), name=name))
+
     db.commit()
