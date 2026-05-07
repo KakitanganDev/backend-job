@@ -1,0 +1,23 @@
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "RUF"]
+# E501: long lines — handled by formatter
+# RUF001/2/3: en-dashes and unicode in comments/docstrings (intentional)
+# UP042: StrEnum recommendation — keeping str+Enum for compat with the scaffold
+# B008: function calls in defaults — idiomatic FastAPI (Depends/Query)
+ignore = ["E501", "RUF001", "RUF002", "RUF003", "UP042", "B008"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B011"]
+"alembic/versions/*" = ["E", "F", "I"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-ra --strict-markers"
+markers = [
+    "slow: longer-running tests (concurrency, integration)",
+]
