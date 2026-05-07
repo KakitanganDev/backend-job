@@ -45,8 +45,8 @@ Priority order: database → service → middleware → API → unit tests → O
 
 | # | Task | Status |
 |---|------|--------|
-| 3.1 | Create `get_current_employee` FastAPI dependency — parses `Authorization: Bearer {employee_id}` header, returns `employee_id` as int. Missing/malformed → 401. | Pending |
-| 3.2 | Create `require_manager` dependency — loads employee from `get_current_employee`, returns 403 if `employee.manager_id IS NOT NULL` | Pending |
+| 3.1 | Create `get_current_employee` FastAPI dependency — parses `Authorization: Bearer {employee_id}` header, returns `employee_id` as int. Missing/malformed → 401. | Complete |
+| 3.2 | Create `require_manager` dependency — loads employee from `get_current_employee`, returns 403 if `employee.manager_id IS NOT NULL` | Complete |
 
 ---
 
@@ -54,26 +54,26 @@ Priority order: database → service → middleware → API → unit tests → O
 
 | # | Task | Status |
 |---|------|--------|
-| 4.1 | Add `/api/v1` prefix via `APIRouter` mounted on the app | Pending |
-| 4.2 | Convert all Pydantic schemas to v2 style (`model_config = ConfigDict(from_attributes=True)`), add `Field(description=...)` on all fields for OpenAPI | Pending |
-| 4.3 | `LeaveRequestCreate` — remove `employee_id`, add `duration: LeaveDuration` field | Pending |
-| 4.4 | `LeaveRequestOut` — `approved_by`→`reviewed_by`, `approved_at`→`reviewed_at`, add `rejection_reason`, `duration` | Pending |
-| 4.5 | Rename `LeaveRequestApprove` → `LeaveRequestReview` — add `decision: Literal["approved","rejected"]`, `rejection_reason: Optional[str]` fields | Pending |
-| 4.6 | Add schemas: `HolidayOut`, `HolidayCreate`, `HolidayUpdate`, `PaginatedEmployees`, `PaginatedHolidays`, `EmployeeWithBalancesOut` | Pending |
-| 4.7 | `GET /api/v1/employees` — wire to `list_employees` service via auth dep; return paginated | Pending |
-| 4.8 | `GET /api/v1/employees/{id}` — wire to `get_employee` service via auth dep | Pending |
-| 4.9 | `POST /api/v1/leave-requests` — employee_id from auth dep, add duration; wire to `create_leave_request` | Pending |
-| 4.10 | `GET /api/v1/leave-requests` — wire to `get_leave_requests` via auth dep | Pending |
-| 4.11 | `GET /api/v1/leave-requests/{id}` — wire to `get_leave_request` service via auth dep | Pending |
-| 4.12 | `POST /api/v1/leave-requests/{id}/review` — reviewer_id from auth dep; wire to `review_leave_request` | Pending |
-| 4.13 | `POST /api/v1/leave-requests/{id}/cancel` — employee_id from auth dep, remove query param; wire to `cancel_leave_request` | Pending |
-| 4.14 | `GET /api/v1/leave-balances/{id}` — wire to `get_leave_balances` via auth dep | Pending |
-| 4.15 | `GET /api/v1/holidays` — any authenticated employee | Pending |
-| 4.16 | `POST /api/v1/holidays` — gated behind `require_manager` | Pending |
-| 4.17 | `PUT /api/v1/holidays/{id}` — gated behind `require_manager` | Pending |
-| 4.18 | `DELETE /api/v1/holidays/{id}` — gated behind `require_manager` | Pending |
-| 4.19 | Add OpenAPI tags — `employees`, `leave-requests`, `leave-balances`, `holidays` | Pending |
-| 4.20 | Replace deprecated `on_event("startup")` with lifespan context manager | Pending |
+| 4.1 | Add `/api/v1` prefix via `APIRouter` mounted on the app | Complete |
+| 4.2 | Convert all Pydantic schemas to v2 style (`model_config = ConfigDict(from_attributes=True)`), add `Field(description=...)` on all fields for OpenAPI | Complete |
+| 4.3 | `LeaveRequestCreate` — remove `employee_id`, add `duration: LeaveDuration` field | Complete |
+| 4.4 | `LeaveRequestOut` — `approved_by`→`reviewed_by`, `approved_at`→`reviewed_at`, add `rejection_reason`, `duration` | Complete |
+| 4.5 | Rename `LeaveRequestApprove` → `LeaveRequestReview` — add `decision: Literal["approved","rejected"]`, `rejection_reason: Optional[str]` fields | Complete |
+| 4.6 | Add schemas: `HolidayOut`, `HolidayCreate`, `HolidayUpdate`, `PaginatedEmployees`, `PaginatedHolidays`, `EmployeeWithBalancesOut` | Complete |
+| 4.7 | `GET /api/v1/employees` — wire to `list_employees` service via auth dep; return paginated | Complete |
+| 4.8 | `GET /api/v1/employees/{id}` — wire to `get_employee` service via auth dep | Complete |
+| 4.9 | `POST /api/v1/leave-requests` — employee_id from auth dep, add duration; wire to `create_leave_request` | Complete |
+| 4.10 | `GET /api/v1/leave-requests` — wire to `get_leave_requests` via auth dep | Complete |
+| 4.11 | `GET /api/v1/leave-requests/{id}` — wire to `get_leave_request` service via auth dep | Complete |
+| 4.12 | `POST /api/v1/leave-requests/{id}/review` — reviewer_id from auth dep; wire to `review_leave_request` | Complete |
+| 4.13 | `POST /api/v1/leave-requests/{id}/cancel` — employee_id from auth dep, remove query param; wire to `cancel_leave_request` | Complete |
+| 4.14 | `GET /api/v1/leave-balances/{id}` — wire to `get_leave_balances` via auth dep | Complete |
+| 4.15 | `GET /api/v1/holidays` — any authenticated employee | Complete |
+| 4.16 | `POST /api/v1/holidays` — gated behind `require_manager` | Complete |
+| 4.17 | `PUT /api/v1/holidays/{id}` — gated behind `require_manager` | Complete |
+| 4.18 | `DELETE /api/v1/holidays/{id}` — gated behind `require_manager` | Complete |
+| 4.19 | Add OpenAPI tags — `employees`, `leave-requests`, `leave-balances`, `holidays` | Complete |
+| 4.20 | Replace deprecated `on_event("startup")` with lifespan context manager | Complete |
 
 ---
 
