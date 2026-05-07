@@ -81,7 +81,7 @@ class LeaveRequestOut(BaseModel):
     leave_type: LeaveType = Field(description="Leave type")
     start_date: date = Field(description="Leave start date")
     end_date: date = Field(description="Leave end date")
-    duration: str = Field(description="Full, first_half, or second_half")
+    duration: LeaveDuration = Field(LeaveDuration.FULL, description="Full, first_half, or second_half")
     reason: Optional[str] = Field(None, description="Reason for leave")
     status: LeaveStatus = Field(description="Request status")
     reviewed_by: Optional[int] = Field(None, description="ID of manager who reviewed")
@@ -200,11 +200,10 @@ def create_leave_request(
             duration=body.duration,
             reason=body.reason,
         )
+    except services.NotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     except services.LeaveError as e:
-        detail = str(e)
-        if "Employee not found" in detail:
-            raise HTTPException(status_code=404, detail=detail)
-        raise HTTPException(status_code=422, detail=detail)
+        raise HTTPException(status_code=422, detail=str(e))
 
 
 @router.get(
@@ -277,11 +276,10 @@ def review_leave_request(
             decision=body.decision,
             rejection_reason=body.rejection_reason,
         )
+    except services.NotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     except services.LeaveError as e:
-        detail = str(e)
-        if "not found" in detail.lower():
-            raise HTTPException(status_code=404, detail=detail)
-        raise HTTPException(status_code=422, detail=detail)
+        raise HTTPException(status_code=422, detail=str(e))
 
 
 @router.post(
@@ -300,10 +298,10 @@ def cancel_leave_request(
             leave_request_id=leave_request_id,
             employee_id=employee_id,
         )
+    except services.NotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     except services.LeaveError as e:
         detail = str(e)
-        if "not found" in detail.lower():
-            raise HTTPException(status_code=404, detail=detail)
         if "only cancel your own" in detail:
             raise HTTPException(status_code=403, detail=detail)
         raise HTTPException(status_code=422, detail=detail)
@@ -385,11 +383,10 @@ def update_holiday(
 ):
     try:
         return services.update_holiday(db, holiday_id=holiday_id, holiday_date=body.date, name=body.name, caller_id=caller_id)
+    except services.NotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     except services.LeaveError as e:
-        detail = str(e)
-        if "not found" in detail.lower():
-            raise HTTPException(status_code=404, detail=detail)
-        raise HTTPException(status_code=422, detail=detail)
+        raise HTTPException(status_code=422, detail=str(e))
 
 
 @router.delete(
@@ -404,8 +401,10 @@ def delete_holiday(
 ):
     try:
         services.delete_holiday(db, holiday_id=holiday_id, caller_id=caller_id)
-    except services.LeaveError as e:
+    except services.NotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    except services.LeaveError as e:
+        raise HTTPException(status_code=422, detail=str(e))
 
 
 # Mount the router

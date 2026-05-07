@@ -1013,7 +1013,9 @@ Role-based access control (e.g., `employee` vs `manager` roles, hierarchical rep
 
 ### 4.18 Double-Submit Protection: Application-Layer Locking vs Idempotency Keys
 
-**Chose:** Rely on the overlap check plus `with_for_update()` row locking on `leave_balances` during creation. If the frontend double-submits (e.g., no debounce on the submit button), the first request acquires the balance lock, increments `used_days`, and creates the leave request. The second request sees the overlap with the first (same dates, same employee, now `pending`) and is rejected with `OverlappingLeaveError`.
+**Chose:** Rely on the overlap check plus SQLite's serialized-write model. If the frontend double-submits (e.g., no debounce on the submit button), the first write increments `used_days` and creates the leave request. The second write waits for the first to commit, then sees the overlap with the first (same dates, same employee, now `pending`) and is rejected with `OverlappingLeaveError`.
+
+**Note:** `with_for_update()` row locking is _not_ used here — it is a PostgreSQL feature that is not needed with SQLite, which serializes all writes at the database level. The overlap check combined with SQLite's single-writer architecture provides the same protection: the first write wins, and the second correctly fails.
 
 **Alternatives:**
 - **Idempotency key:** Client generates a UUID, server stores it and rejects duplicates. More robust but requires client cooperation and a key store.

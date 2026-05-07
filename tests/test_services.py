@@ -28,6 +28,7 @@ from src.services import (
     update_holiday,
     delete_holiday,
     LeaveError,
+    NotFoundError,
     InsufficientBalanceError,
     OverlappingLeaveError,
     SelfReviewError,
@@ -295,7 +296,7 @@ class TestLeaveServices(unittest.TestCase):
     # ── 5.13 Create: employee not found ─────────────────────────────────────
 
     def test_create_leave_request_employee_not_found(self):
-        with self.assertRaises(LeaveError) as ctx:
+        with self.assertRaises(NotFoundError) as ctx:
             create_leave_request(
                 self.db,
                 employee_id=9999,
@@ -849,7 +850,7 @@ class TestLeaveServices(unittest.TestCase):
             start_date=date(2026, 5, 11), end_date=date(2026, 5, 13),
             duration=LeaveDuration.FULL,
         )
-        with self.assertRaises(LeaveError):
+        with self.assertRaises(NotFoundError):
             get_leave_request(self.db, leave_request_id=lr.id, caller_id=self.carol.id)
 
     # ── Additional: get_employee ────────────────────────────────────────────
@@ -891,6 +892,39 @@ class TestLeaveServices(unittest.TestCase):
         with self.assertRaises(LeaveError) as ctx:
             delete_holiday(self.db, holiday_id=holiday.id, caller_id=self.bob.id)
         self.assertIn("Only managers", str(ctx.exception))
+
+    # ── Additional: zero working days ────────────────────────────────────────
+
+    def test_create_leave_request_all_non_working_days(self):
+        """Leave request with zero working days (all weekend/holiday) is rejected."""
+        # Wesak Day 2026-05-20 is a Wednesday public holiday → 0 working days
+        with self.assertRaises(LeaveError) as ctx:
+            create_leave_request(
+                self.db,
+                employee_id=self.bob.id,
+                leave_type=LeaveType.ANNUAL,
+                start_date=date(2026, 5, 20),
+                end_date=date(2026, 5, 20),
+                duration=LeaveDuration.FULL,
+            )
+        self.assertIn("No working days", str(ctx.exception))
+
+    # ── Additional: review/cancel not found ──────────────────────────────────
+
+    def test_review_leave_request_not_found(self):
+        with self.assertRaises(NotFoundError) as ctx:
+            review_leave_request(
+                self.db,
+                leave_request_id=9999,
+                reviewer_id=self.alice.id,
+                decision="approved",
+            )
+        self.assertIn("not found", str(ctx.exception))
+
+    def test_cancel_leave_request_not_found(self):
+        with self.assertRaises(NotFoundError) as ctx:
+            cancel_leave_request(self.db, leave_request_id=9999, employee_id=self.bob.id)
+        self.assertIn("not found", str(ctx.exception))
 
 
 if __name__ == "__main__":

@@ -32,11 +32,13 @@ class TestLeaveAPI(unittest.TestCase):
 
     def setUp(self):
         self.client = TestClient(app)
-        # Clean up non-seed data from previous tests
+        # Reset per-test state: delete leave requests and reset balances
         db = SessionLocal()
         try:
             db.query(LeaveRequest).delete()
-            db.query(PublicHoliday).delete()
+            # Reset all leave balance used_days to zero
+            from src.models import LeaveBalance
+            db.query(LeaveBalance).update({"used_days": 0.0})
             db.commit()
         finally:
             db.close()

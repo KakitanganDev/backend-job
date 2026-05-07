@@ -48,6 +48,10 @@ class NotDirectManagerError(LeaveError):
     pass
 
 
+class NotFoundError(LeaveError):
+    pass
+
+
 class UnauthorizedAccessError(LeaveError):
     pass
 
@@ -108,7 +112,7 @@ def create_leave_request(
 
     employee = db.query(Employee).filter(Employee.id == employee_id).first()
     if not employee:
-        raise LeaveError("Employee not found")
+        raise NotFoundError("Employee not found")
 
     if start_date < today:
         raise LeaveError("Cannot back-date leave requests")
@@ -197,14 +201,14 @@ def review_leave_request(
 ) -> LeaveRequest:
     lr = db.query(LeaveRequest).filter(LeaveRequest.id == leave_request_id).first()
     if not lr:
-        raise LeaveError("Leave request not found")
+        raise NotFoundError("Leave request not found")
 
     if lr.status != LeaveStatus.PENDING.value:
         raise AlreadyReviewedError("Leave request has already been reviewed")
 
     reviewer = db.query(Employee).filter(Employee.id == reviewer_id).first()
     if not reviewer:
-        raise LeaveError("Reviewer not found")
+        raise NotFoundError("Reviewer not found")
 
     requester = db.query(Employee).filter(Employee.id == lr.employee_id).first()
 
@@ -228,15 +232,14 @@ def review_leave_request(
             reviewed_by=reviewer_id,
             reviewed_at=now,
             rejection_reason=rejection_reason,
+            updated_at=now,
         )
     )
     if result.rowcount == 0:
         db.rollback()
         raise AlreadyReviewedError("Leave request was already reviewed concurrently")
 
-    db.commit()
-    db.refresh(lr)
-
+    # Restore balance on rejection before committing — keeps both operations atomic
     if decision == LeaveStatus.REJECTED.value:
         working_days = count_working_days(db, lr.start_date, lr.end_date, LeaveDuration(lr.duration))
         balance = _get_balance(db, lr.employee_id, LeaveType(lr.leave_type), lr.start_date.year)
@@ -253,14 +256,14 @@ def review_leave_request(
                 logger.warning(
                     "Balance restore failed for leave request %s: used_days would go negative", lr.id
                 )
-            db.commit()
-            db.refresh(lr)
         else:
             logger.warning(
                 "Balance row missing during rejection of leave request %s: employee=%s type=%s year=%s",
                 lr.id, lr.employee_id, lr.leave_type, lr.start_date.year,
             )
 
+    db.commit()
+    db.refresh(lr)
     return lr
 
 
@@ -271,7 +274,7 @@ def cancel_leave_request(
 ) -> LeaveRequest:
     lr = db.query(LeaveRequest).filter(LeaveRequest.id == leave_request_id).first()
     if not lr:
-        raise LeaveError("Leave request not found")
+        raise NotFoundError("Leave request not found")
 
     if lr.employee_id != employee_id:
         raise LeaveError("You can only cancel your own leave requests")
@@ -319,7 +322,7 @@ def get_leave_request(
 ) -> LeaveRequest:
     lr = db.query(LeaveRequest).filter(LeaveRequest.id == leave_request_id).first()
     if not lr:
-        raise LeaveError("Leave request not found")
+        raise NotFoundError("Leave request not found")
 
     # Caller must be the owner or the owner's direct manager
     if lr.employee_id == caller_id:
@@ -329,7 +332,7 @@ def get_leave_request(
     if owner and owner.manager_id == caller_id:
         return lr
 
-    raise LeaveError("Leave request not found")
+    raise NotFoundError("Leave request not found")
 
 
 def get_leave_requests(
@@ -493,7 +496,7 @@ def update_holiday(
 
     holiday = db.query(PublicHoliday).filter(PublicHoliday.id == holiday_id).first()
     if not holiday:
-        raise LeaveError("Holiday not found")
+        raise NotFoundError("Holiday not found")
 
     dup = (
         db.query(PublicHoliday)
@@ -517,7 +520,7 @@ def delete_holiday(db: Session, holiday_id: int, caller_id: int) -> None:
 
     holiday = db.query(PublicHoliday).filter(PublicHoliday.id == holiday_id).first()
     if not holiday:
-        raise LeaveError("Holiday not found")
+        raise NotFoundError("Holiday not found")
     db.delete(holiday)
     db.commit()
 
