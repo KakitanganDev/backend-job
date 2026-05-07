@@ -12,6 +12,7 @@ from sqlalchemy.orm import sessionmaker
 
 from src.database import Base
 from src.models import Employee, LeaveRequest, LeaveBalance, PublicHoliday, LeaveType, LeaveStatus, LeaveDuration
+from src import services
 from src.services import (
     seed_demo_data,
     create_leave_request,
@@ -50,7 +51,12 @@ class TestLeaveServices(unittest.TestCase):
         self.bob = self.db.query(Employee).filter(Employee.email == "bob@company.com").first()
         self.carol = self.db.query(Employee).filter(Employee.email == "carol@company.com").first()
 
+        # Freeze time so hardcoded May 2026 dates don't age into backdating failures
+        self._original_today = services._today
+        services._today = lambda: date(2026, 5, 7)
+
     def tearDown(self):
+        services._today = self._original_today
         self.db.rollback()
         self.db.close()
         self.engine.dispose()
@@ -58,7 +64,7 @@ class TestLeaveServices(unittest.TestCase):
     # ── Helper ──────────────────────────────────────────────────────────────
 
     def _bobs_balance(self, leave_type=LeaveType.ANNUAL):
-        year = date.today().year
+        year = services._today().year
         return (
             self.db.query(LeaveBalance)
             .filter(
@@ -244,6 +250,22 @@ class TestLeaveServices(unittest.TestCase):
                 duration=LeaveDuration.FIRST_HALF,
             )
         self.assertIn("non-working day", str(ctx.exception))
+
+    # ── 5.10b Create: half-day on public holiday ───────────────────────────
+
+    def test_create_leave_request_half_day_on_public_holiday(self):
+        """Half-day on a public holiday → 0 working days → rejected."""
+        # Wesak Day 2026-05-20 is a Wednesday public holiday
+        with self.assertRaises(LeaveError) as ctx:
+            create_leave_request(
+                self.db,
+                employee_id=self.bob.id,
+                leave_type=LeaveType.ANNUAL,
+                start_date=date(2026, 5, 20),  # Wesak Day (Wednesday)
+                end_date=date(2026, 5, 20),
+                duration=LeaveDuration.FIRST_HALF,
+            )
+        self.assertIn("No working days", str(ctx.exception))
 
     # ── 5.11 Create: unpaid leave ───────────────────────────────────────────
 
@@ -454,6 +476,28 @@ class TestLeaveServices(unittest.TestCase):
                 decision="approved",
             )
 
+    # ── 5.19b Review: invalid decision ─────────────────────────────────────
+
+    def test_review_invalid_decision(self):
+        """Decision must be 'approved' or 'rejected'."""
+        lr = create_leave_request(
+            self.db,
+            employee_id=self.bob.id,
+            leave_type=LeaveType.ANNUAL,
+            start_date=date(2026, 5, 11),
+            end_date=date(2026, 5, 13),
+            duration=LeaveDuration.FULL,
+        )
+
+        with self.assertRaises(LeaveError) as ctx:
+            review_leave_request(
+                self.db,
+                leave_request_id=lr.id,
+                reviewer_id=self.alice.id,
+                decision="invalid_decision",
+            )
+        self.assertIn("Invalid decision", str(ctx.exception))
+
     # ── 5.20 Cancel: pending ────────────────────────────────────────────────
 
     def test_cancel_pending(self):
@@ -572,8 +616,8 @@ class TestLeaveServices(unittest.TestCase):
             duration=LeaveDuration.FULL,
         )
 
-        # Manually set start_date to yesterday
-        yesterday = date.today() - date.resolution
+        # Manually set start_date to yesterday (relative to frozen clock)
+        yesterday = services._today() - date.resolution
         self.db.execute(
             sa_update(LeaveRequest)
             .where(LeaveRequest.id == lr.id)
@@ -681,7 +725,7 @@ class TestLeaveServices(unittest.TestCase):
         """Year omitted → current year balances."""
         balances = get_leave_balances(self.db, employee_id=self.bob.id)
         self.assertGreater(len(balances), 0)
-        current_year = date.today().year
+        current_year = services._today().year
         for b in balances:
             self.assertEqual(b.year, current_year)
 

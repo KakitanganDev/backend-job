@@ -52,7 +52,7 @@ class TestLeaveAPI(unittest.TestCase):
 
     def test_auth_missing_header(self):
         resp = self.client.get("/api/v1/employees")
-        self.assertIn(resp.status_code, (401, 422))
+        self.assertEqual(resp.status_code, 401)
 
     def test_auth_malformed_header(self):
         resp = self.client.get("/api/v1/employees", headers={"Authorization": "Invalid thing"})

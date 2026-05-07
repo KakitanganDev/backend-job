@@ -58,6 +58,11 @@ class UnauthorizedAccessError(LeaveError):
 
 # ── Utility ────────────────────────────────────────────────────────────────
 
+def _today() -> date:
+    """Return today's date.  Factored out so tests can freeze time."""
+    return date.today()
+
+
 def count_working_days(
     db: Session,
     start_date: date,
@@ -66,7 +71,12 @@ def count_working_days(
 ) -> float:
     """Count working days in [start_date, end_date], excluding weekends and public holidays."""
     if duration in (LeaveDuration.FIRST_HALF, LeaveDuration.SECOND_HALF):
-        return 0.5
+        holiday = (
+            db.query(PublicHoliday)
+            .filter(PublicHoliday.date == start_date)
+            .first()
+        )
+        return 0.0 if holiday else 0.5
 
     holiday_dates = {
         row[0]
@@ -108,7 +118,7 @@ def create_leave_request(
     duration: LeaveDuration = LeaveDuration.FULL,
     reason: Optional[str] = None,
 ) -> LeaveRequest:
-    today = date.today()
+    today = _today()
 
     employee = db.query(Employee).filter(Employee.id == employee_id).first()
     if not employee:
@@ -168,14 +178,26 @@ def create_leave_request(
         raise LeaveError(f"No leave balance found for {leave_type.value} in {year}")
 
     if leave_type != LeaveType.UNPAID:
-        if balance.remaining_days < requested_days:
+        result = db.execute(
+            update(LeaveBalance)
+            .where(
+                LeaveBalance.id == balance.id,
+                LeaveBalance.total_days - LeaveBalance.used_days >= requested_days,
+            )
+            .values(used_days=LeaveBalance.used_days + requested_days)
+        )
+        if result.rowcount == 0:
+            db.rollback()
             raise InsufficientBalanceError(
                 f"Insufficient balance: {leave_type.value} has {balance.remaining_days} days remaining, "
                 f"but {requested_days} days were requested"
             )
-
-    # Deduct balance immediately
-    balance.used_days += requested_days
+    else:
+        db.execute(
+            update(LeaveBalance)
+            .where(LeaveBalance.id == balance.id)
+            .values(used_days=LeaveBalance.used_days + requested_days)
+        )
 
     lr = LeaveRequest(
         employee_id=employee_id,
@@ -199,6 +221,9 @@ def review_leave_request(
     decision: str,
     rejection_reason: Optional[str] = None,
 ) -> LeaveRequest:
+    if decision not in (LeaveStatus.APPROVED.value, LeaveStatus.REJECTED.value):
+        raise LeaveError(f"Invalid decision: {decision}. Must be 'approved' or 'rejected'")
+
     lr = db.query(LeaveRequest).filter(LeaveRequest.id == leave_request_id).first()
     if not lr:
         raise NotFoundError("Leave request not found")
@@ -282,7 +307,7 @@ def cancel_leave_request(
     if lr.status not in (LeaveStatus.PENDING.value, LeaveStatus.APPROVED.value):
         raise LeaveError("Only pending or approved leave requests can be cancelled")
 
-    if lr.start_date < date.today():
+    if lr.start_date < _today():
         raise LeaveError("Cannot cancel a leave request that has already started")
 
     now = datetime.now(timezone.utc)
@@ -391,7 +416,7 @@ def get_leave_balances(
     year: Optional[int] = None,
 ) -> list[LeaveBalance]:
     if year is None:
-        year = date.today().year
+        year = _today().year
 
     return (
         db.query(LeaveBalance)

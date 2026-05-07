@@ -2,6 +2,8 @@
 FastAPI dependencies for authentication and authorization.
 """
 
+from typing import Optional
+
 from fastapi import Header, HTTPException, Depends
 from sqlalchemy.orm import Session
 
@@ -10,13 +12,13 @@ from src.models import Employee
 
 
 def get_current_employee(
-    authorization: str = Header(..., description="Bearer {employee_id}"),
+    authorization: Optional[str] = Header(None, description="Bearer {employee_id}"),
 ) -> int:
     """Parse Authorization header and return the caller's employee_id.
 
     Missing or malformed header returns 401.
     """
-    if not authorization.startswith("Bearer "):
+    if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing or malformed Authorization header")
 
     token = authorization[7:].strip()
