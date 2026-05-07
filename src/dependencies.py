@@ -1,7 +1,5 @@
 """
 FastAPI dependencies for authentication and authorization.
-
-Phase 3 — Middleware Layer.
 """
 
 from fastapi import Header, HTTPException, Depends

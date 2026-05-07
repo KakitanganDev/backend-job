@@ -1,5 +1,5 @@
 """
-Integration tests for the FastAPI leave management API — Phase 6.
+Integration tests for the FastAPI leave management API.
 
 These tests use TestClient to exercise the full stack.
 """

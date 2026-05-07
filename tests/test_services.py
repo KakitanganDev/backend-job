@@ -1,5 +1,5 @@
 """
-Tests for the leave management service layer — Phase 5.
+Tests for the leave management service layer.
 
 All tests use in-memory SQLite with fresh seed data per test.
 """
