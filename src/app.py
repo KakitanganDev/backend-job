@@ -357,11 +357,11 @@ def list_holidays(
 )
 def create_holiday(
     body: HolidayCreate,
-    manager_id: int = Depends(require_manager),
+    caller_id: int = Depends(require_manager),
     db: Session = Depends(get_db),
 ):
     try:
-        return services.create_holiday(db, holiday_date=body.date, name=body.name)
+        return services.create_holiday(db, holiday_date=body.date, name=body.name, caller_id=caller_id)
     except services.LeaveError as e:
         raise HTTPException(status_code=422, detail=str(e))
 
@@ -374,11 +374,11 @@ def create_holiday(
 def update_holiday(
     holiday_id: int,
     body: HolidayUpdate,
-    manager_id: int = Depends(require_manager),
+    caller_id: int = Depends(require_manager),
     db: Session = Depends(get_db),
 ):
     try:
-        return services.update_holiday(db, holiday_id=holiday_id, holiday_date=body.date, name=body.name)
+        return services.update_holiday(db, holiday_id=holiday_id, holiday_date=body.date, name=body.name, caller_id=caller_id)
     except services.LeaveError as e:
         detail = str(e)
         if "not found" in detail.lower():
@@ -393,11 +393,11 @@ def update_holiday(
 )
 def delete_holiday(
     holiday_id: int,
-    manager_id: int = Depends(require_manager),
+    caller_id: int = Depends(require_manager),
     db: Session = Depends(get_db),
 ):
     try:
-        services.delete_holiday(db, holiday_id=holiday_id)
+        services.delete_holiday(db, holiday_id=holiday_id, caller_id=caller_id)
     except services.LeaveError as e:
         raise HTTPException(status_code=404, detail=str(e))
 

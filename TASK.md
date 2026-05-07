@@ -83,45 +83,45 @@ All tests use in-memory SQLite. Each test method seeds fresh data via `seed_demo
 
 | # | Task | Status |
 |---|------|--------|
-| 5.1 | `test_create_leave_request_success` — Bob requests 3-day annual leave → 201, balance deducted by working days | Pending |
-| 5.2 | `test_create_leave_request_half_day` — Bob requests first_half single day → deducts 0.5 | Pending |
-| 5.3 | `test_create_leave_request_insufficient_balance` — Bob requests 15 days annual (only 14 available) → `InsufficientBalanceError` | Pending |
-| 5.4 | `test_create_leave_request_overlapping` — Bob has pending 05-10→05-12; second request 05-11→05-13 → `OverlappingLeaveError` | Pending |
-| 5.5 | `test_create_leave_request_half_day_same_day_collision` — Bob has pending first_half 05-10; second request second_half 05-10 → `OverlappingLeaveError` | Pending |
-| 5.6 | `test_create_leave_request_start_after_end` — start_date > end_date → `LeaveError` | Pending |
-| 5.7 | `test_create_leave_request_backdating` — start_date < today → `LeaveError` | Pending |
-| 5.8 | `test_create_leave_request_cross_year` — 2026-12-28 → 2027-01-04 → rejected (cross-year) | Pending |
-| 5.9 | `test_create_leave_request_half_day_multi_day` — first_half spanning 2 days → rejected | Pending |
-| 5.10 | `test_create_leave_request_half_day_on_weekend` — first_half on Saturday → rejected | Pending |
-| 5.11 | `test_create_leave_request_unpaid` — Unpaid leave with total_days=0 → succeeds, remaining_days goes negative | Pending |
-| 5.12 | `test_create_leave_request_no_balance_row` — Leave type with no balance row → rejected | Pending |
-| 5.13 | `test_create_leave_request_employee_not_found` — Non-existent employee_id → `LeaveError` | Pending |
-| 5.14 | `test_review_approve` — Alice approves Bob's pending request → status approved, balance unchanged | Pending |
-| 5.15 | `test_review_reject_restores_balance` — Alice rejects Bob's pending request → status rejected, `used_days` restored | Pending |
-| 5.16 | `test_review_self_review_blocked` — Bob tries to review own request → error (Bob has manager_id=alice) | Pending |
-| 5.17 | `test_review_self_review_top_level_allowed` — Alice (manager_id=NULL) reviews own request → succeeds | Pending |
-| 5.18 | `test_review_not_direct_manager` — Carol tries to review Bob's request → error (Carol is not Bob's manager) | Pending |
-| 5.19 | `test_review_already_reviewed` — Approve, then approve again → error (status not pending) | Pending |
-| 5.20 | `test_cancel_pending` — Bob cancels own pending request → status cancelled, balance restored | Pending |
-| 5.21 | `test_cancel_approved` — Alice approves, then Bob cancels → status cancelled, balance restored | Pending |
-| 5.22 | `test_cancel_not_owner` — Carol tries to cancel Bob's request → error | Pending |
-| 5.23 | `test_cancel_rejected` — Rejected request → cannot cancel | Pending |
-| 5.24 | `test_cancel_already_cancelled` — Already cancelled → cannot cancel again | Pending |
-| 5.25 | `test_cancel_past_start_date` — Leave start_date is yesterday → cannot cancel | Pending |
-| 5.26 | `test_get_leave_requests_scoped` — Alice sees Bob + Carol + self; Bob sees only self | Pending |
-| 5.27 | `test_get_leave_requests_date_filter_overlap` — Request 04-20→04-30; filter from_date=04-23, to_date=04-25 → should match (interval overlap) | Pending |
-| 5.28 | `test_get_leave_requests_date_filter_no_match` — Request 04-20→04-30; filter from_date=05-01, to_date=05-10 → no match | Pending |
-| 5.29 | `test_get_leave_requests_pagination` — Page 1 size 1, page 2 size 1, page beyond data returns empty | Pending |
-| 5.30 | `test_list_employees_direct_reports` — Alice (manager) sees Bob + Carol; Bob (non-manager) sees empty | Pending |
-| 5.31 | `test_get_leave_balances_default_year` — Year omitted → current year balances | Pending |
-| 5.32 | `test_get_leave_balances_empty` — New employee with no balance rows → empty list | Pending |
-| 5.33 | `test_holiday_create` — Alice (manager) creates holiday → 201 | Pending |
-| 5.34 | `test_holiday_create_duplicate_date` — Same date twice → error | Pending |
-| 5.35 | `test_holiday_crud_non_manager` — Bob (non-manager) tries to create → error | Pending |
-| 5.36 | `test_holiday_list_by_year` — Filter by year returns correct subset | Pending |
-| 5.37 | `test_holiday_update_delete` — Update name, delete → 204 | Pending |
-| 5.38 | `test_count_working_days` — Excludes weekends, excludes holidays, all-weekend range returns 0 | Pending |
-| 5.39 | `test_holiday_on_weekend` — Holiday on Saturday is allowed (no rejection), working-day counter already skips weekends | Pending |
+| 5.1 | `test_create_leave_request_success` — Bob requests 3-day annual leave → 201, balance deducted by working days | Complete |
+| 5.2 | `test_create_leave_request_half_day` — Bob requests first_half single day → deducts 0.5 | Complete |
+| 5.3 | `test_create_leave_request_insufficient_balance` — Bob requests 15 days annual (only 14 available) → `InsufficientBalanceError` | Complete |
+| 5.4 | `test_create_leave_request_overlapping` — Bob has pending 05-10→05-12; second request 05-11→05-13 → `OverlappingLeaveError` | Complete |
+| 5.5 | `test_create_leave_request_half_day_same_day_collision` — Bob has pending first_half 05-10; second request second_half 05-10 → `OverlappingLeaveError` | Complete |
+| 5.6 | `test_create_leave_request_start_after_end` — start_date > end_date → `LeaveError` | Complete |
+| 5.7 | `test_create_leave_request_backdating` — start_date < today → `LeaveError` | Complete |
+| 5.8 | `test_create_leave_request_cross_year` — 2026-12-28 → 2027-01-04 → rejected (cross-year) | Complete |
+| 5.9 | `test_create_leave_request_half_day_multi_day` — first_half spanning 2 days → rejected | Complete |
+| 5.10 | `test_create_leave_request_half_day_on_weekend` — first_half on Saturday → rejected | Complete |
+| 5.11 | `test_create_leave_request_unpaid` — Unpaid leave with total_days=0 → succeeds, remaining_days goes negative | Complete |
+| 5.12 | `test_create_leave_request_no_balance_row` — Leave type with no balance row → rejected | Complete |
+| 5.13 | `test_create_leave_request_employee_not_found` — Non-existent employee_id → `LeaveError` | Complete |
+| 5.14 | `test_review_approve` — Alice approves Bob's pending request → status approved, balance unchanged | Complete |
+| 5.15 | `test_review_reject_restores_balance` — Alice rejects Bob's pending request → status rejected, `used_days` restored | Complete |
+| 5.16 | `test_review_self_review_blocked` — Bob tries to review own request → error (Bob has manager_id=alice) | Complete |
+| 5.17 | `test_review_self_review_top_level_allowed` — Alice (manager_id=NULL) reviews own request → succeeds | Complete |
+| 5.18 | `test_review_not_direct_manager` — Carol tries to review Bob's request → error (Carol is not Bob's manager) | Complete |
+| 5.19 | `test_review_already_reviewed` — Approve, then approve again → error (status not pending) | Complete |
+| 5.20 | `test_cancel_pending` — Bob cancels own pending request → status cancelled, balance restored | Complete |
+| 5.21 | `test_cancel_approved` — Alice approves, then Bob cancels → status cancelled, balance restored | Complete |
+| 5.22 | `test_cancel_not_owner` — Carol tries to cancel Bob's request → error | Complete |
+| 5.23 | `test_cancel_rejected` — Rejected request → cannot cancel | Complete |
+| 5.24 | `test_cancel_already_cancelled` — Already cancelled → cannot cancel again | Complete |
+| 5.25 | `test_cancel_past_start_date` — Leave start_date is yesterday → cannot cancel | Complete |
+| 5.26 | `test_get_leave_requests_scoped` — Alice sees Bob + Carol + self; Bob sees only self | Complete |
+| 5.27 | `test_get_leave_requests_date_filter_overlap` — Request 04-20→04-30; filter from_date=04-23, to_date=04-25 → should match (interval overlap) | Complete |
+| 5.28 | `test_get_leave_requests_date_filter_no_match` — Request 04-20→04-30; filter from_date=05-01, to_date=05-10 → no match | Complete |
+| 5.29 | `test_get_leave_requests_pagination` — Page 1 size 1, page 2 size 1, page beyond data returns empty | Complete |
+| 5.30 | `test_list_employees_direct_reports` — Alice (manager) sees Bob + Carol; Bob (non-manager) sees empty | Complete |
+| 5.31 | `test_get_leave_balances_default_year` — Year omitted → current year balances | Complete |
+| 5.32 | `test_get_leave_balances_empty` — New employee with no balance rows → empty list | Complete |
+| 5.33 | `test_holiday_create` — Alice (manager) creates holiday → 201 | Complete |
+| 5.34 | `test_holiday_create_duplicate_date` — Same date twice → error | Complete |
+| 5.35 | `test_holiday_crud_non_manager` — Bob (non-manager) tries to create → error | Complete |
+| 5.36 | `test_holiday_list_by_year` — Filter by year returns correct subset | Complete |
+| 5.37 | `test_holiday_update_delete` — Update name, delete → 204 | Complete |
+| 5.38 | `test_count_working_days` — Excludes weekends, excludes holidays, all-weekend range returns 0 | Complete |
+| 5.39 | `test_holiday_on_weekend` — Holiday on Saturday is allowed (no rejection), working-day counter already skips weekends | Complete |
 
 ---
 
@@ -129,20 +129,20 @@ All tests use in-memory SQLite. Each test method seeds fresh data via `seed_demo
 
 | # | Task | Status |
 |---|------|--------|
-| 6.1 | `test_auth_missing_header` — No Authorization header → 401 on any endpoint | Pending |
-| 6.2 | `test_auth_malformed_header` — `Authorization: Invalid thing` → 401 | Pending |
-| 6.3 | `test_list_employees` — Alice (id=1) sees Bob + Carol with pagination | Pending |
-| 6.4 | `test_get_employee` — GET employee/2 → 200 with employee + balances | Pending |
-| 6.5 | `test_get_employee_404` — Non-existent ID → 404 | Pending |
-| 6.6 | `test_create_leave_request` — Full create flow → 201, verify response shape | Pending |
-| 6.7 | `test_create_leave_request_validation_error` — Invalid dates → 422 with error detail | Pending |
-| 6.8 | `test_review_leave_request` — Manager approves → 200, status=approved | Pending |
-| 6.9 | `test_cancel_leave_request` — Owner cancels → 200, status=cancelled | Pending |
-| 6.10 | `test_cancel_not_owner` — Wrong employee → 403 | Pending |
-| 6.11 | `test_leave_balances` — GET balances → 200 with array | Pending |
-| 6.12 | `test_holiday_crud` — Manager: create → 201, list → 200, update → 200, delete → 204 | Pending |
-| 6.13 | `test_holiday_unauthorized` — Non-manager POST → 403 | Pending |
-| 6.14 | `test_pagination_edge_cases` — page=0 → 422, page_size=200 → capped/422, page beyond data → empty | Pending |
+| 6.1 | `test_auth_missing_header` — No Authorization header → 401 on any endpoint | Complete |
+| 6.2 | `test_auth_malformed_header` — `Authorization: Invalid thing` → 401 | Complete |
+| 6.3 | `test_list_employees` — Alice (id=1) sees Bob + Carol with pagination | Complete |
+| 6.4 | `test_get_employee` — GET employee/2 → 200 with employee + balances | Complete |
+| 6.5 | `test_get_employee_404` — Non-existent ID → 404 | Complete |
+| 6.6 | `test_create_leave_request` — Full create flow → 201, verify response shape | Complete |
+| 6.7 | `test_create_leave_request_validation_error` — Invalid dates → 422 with error detail | Complete |
+| 6.8 | `test_review_leave_request` — Manager approves → 200, status=approved | Complete |
+| 6.9 | `test_cancel_leave_request` — Owner cancels → 200, status=cancelled | Complete |
+| 6.10 | `test_cancel_not_owner` — Wrong employee → 403 | Complete |
+| 6.11 | `test_leave_balances` — GET balances → 200 with array | Complete |
+| 6.12 | `test_holiday_crud` — Manager: create → 201, list → 200, update → 200, delete → 204 | Complete |
+| 6.13 | `test_holiday_unauthorized` — Non-manager POST → 403 | Complete |
+| 6.14 | `test_pagination_edge_cases` — page=0 → 422, page_size=200 → capped/422, page beyond data → empty | Complete |
 
 ---
 

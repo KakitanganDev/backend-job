@@ -450,7 +450,12 @@ def create_holiday(
     db: Session,
     holiday_date: date,
     name: str,
+    caller_id: int,
 ) -> PublicHoliday:
+    caller = db.query(Employee).filter(Employee.id == caller_id).first()
+    if not caller or caller.manager_id is not None:
+        raise LeaveError("Only managers can manage holidays")
+
     existing = db.query(PublicHoliday).filter(PublicHoliday.date == holiday_date).first()
     if existing:
         raise LeaveError(f"A holiday already exists on {holiday_date}")
@@ -467,7 +472,12 @@ def update_holiday(
     holiday_id: int,
     holiday_date: date,
     name: str,
+    caller_id: int,
 ) -> PublicHoliday:
+    caller = db.query(Employee).filter(Employee.id == caller_id).first()
+    if not caller or caller.manager_id is not None:
+        raise LeaveError("Only managers can manage holidays")
+
     holiday = db.query(PublicHoliday).filter(PublicHoliday.id == holiday_id).first()
     if not holiday:
         raise LeaveError("Holiday not found")
@@ -487,7 +497,11 @@ def update_holiday(
     return holiday
 
 
-def delete_holiday(db: Session, holiday_id: int) -> None:
+def delete_holiday(db: Session, holiday_id: int, caller_id: int) -> None:
+    caller = db.query(Employee).filter(Employee.id == caller_id).first()
+    if not caller or caller.manager_id is not None:
+        raise LeaveError("Only managers can manage holidays")
+
     holiday = db.query(PublicHoliday).filter(PublicHoliday.id == holiday_id).first()
     if not holiday:
         raise LeaveError("Holiday not found")
