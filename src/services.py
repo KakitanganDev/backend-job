@@ -48,6 +48,10 @@ class NotDirectManagerError(LeaveError):
     pass
 
 
+class UnauthorizedAccessError(LeaveError):
+    pass
+
+
 # ── Utility ────────────────────────────────────────────────────────────────
 
 def count_working_days(
@@ -418,8 +422,17 @@ def list_employees(
 def get_employee(
     db: Session,
     employee_id: int,
+    caller_id: int,
 ) -> Optional[Employee]:
-    return db.query(Employee).filter(Employee.id == employee_id).first()
+    employee = db.query(Employee).filter(Employee.id == employee_id).first()
+    if employee is None:
+        return None
+    # Scope: caller can only see their own record or their direct reports
+    if employee_id == caller_id:
+        return employee
+    if employee.manager_id == caller_id:
+        return employee
+    raise UnauthorizedAccessError("You do not have access to this employee's details")
 
 
 # ── Holidays ───────────────────────────────────────────────────────────────

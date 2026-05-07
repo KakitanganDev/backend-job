@@ -33,6 +33,7 @@ from src.services import (
     SelfReviewError,
     AlreadyReviewedError,
     NotDirectManagerError,
+    UnauthorizedAccessError,
 )
 
 
@@ -854,13 +855,18 @@ class TestLeaveServices(unittest.TestCase):
     # ── Additional: get_employee ────────────────────────────────────────────
 
     def test_get_employee_found(self):
-        emp = get_employee(self.db, employee_id=self.bob.id)
+        emp = get_employee(self.db, employee_id=self.bob.id, caller_id=self.bob.id)
         self.assertIsNotNone(emp)
         self.assertEqual(emp.email, "bob@company.com")
 
     def test_get_employee_not_found(self):
-        emp = get_employee(self.db, employee_id=9999)
+        emp = get_employee(self.db, employee_id=9999, caller_id=1)
         self.assertIsNone(emp)
+
+    def test_get_employee_outsider_denied(self):
+        # Carol tries to view a non-direct-report employee — raises 403
+        with self.assertRaises(UnauthorizedAccessError):
+            get_employee(self.db, employee_id=self.bob.id, caller_id=self.carol.id)
 
     # ── Additional: holiday update/delete non-manager ───────────────────────
 

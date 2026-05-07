@@ -67,6 +67,11 @@ class TestLeaveAPI(unittest.TestCase):
         resp = self.client.get("/api/v1/employees/9999", headers={"Authorization": "Bearer 1"})
         self.assertEqual(resp.status_code, 404)
 
+    def test_get_employee_403(self):
+        # Carol (id=3) is not Bob's (id=2) manager — should be denied
+        resp = self.client.get("/api/v1/employees/2", headers={"Authorization": "Bearer 3"})
+        self.assertEqual(resp.status_code, 403)
+
     def test_create_leave_request(self):
         resp = self.client.post(
             "/api/v1/leave-requests",

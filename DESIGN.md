@@ -93,6 +93,7 @@ Authorization: Bearer {employee_id}
 |--------|---------|
 | 200 | Success |
 | 401 | Missing or malformed `Authorization` header |
+| 403 | Forbidden — not the employee or their direct manager |
 | 404 | Employee not found |
 
 ---
@@ -362,6 +363,7 @@ Authorization: Bearer {employee_id}
 |--------|---------|
 | 200 | Success |
 | 401 | Missing or malformed `Authorization` header |
+| 403 | Forbidden — not the employee or their direct manager |
 | 404 | Employee not found |
 
 ---

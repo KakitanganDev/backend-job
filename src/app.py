@@ -164,7 +164,10 @@ def get_employee(
     caller_id: int = Depends(get_current_employee),
     db: Session = Depends(get_db),
 ):
-    employee = services.get_employee(db, employee_id=employee_id)
+    try:
+        employee = services.get_employee(db, employee_id=employee_id, caller_id=caller_id)
+    except services.UnauthorizedAccessError as e:
+        raise HTTPException(status_code=403, detail=str(e))
     if not employee:
         raise HTTPException(status_code=404, detail="Employee not found")
     balances = services.get_leave_balances(db, employee_id=employee_id)
@@ -319,7 +322,10 @@ def get_leave_balances(
     caller_id: int = Depends(get_current_employee),
     db: Session = Depends(get_db),
 ):
-    employee = services.get_employee(db, employee_id=employee_id)
+    try:
+        employee = services.get_employee(db, employee_id=employee_id, caller_id=caller_id)
+    except services.UnauthorizedAccessError as e:
+        raise HTTPException(status_code=403, detail=str(e))
     if not employee:
         raise HTTPException(status_code=404, detail="Employee not found")
     balances = services.get_leave_balances(db, employee_id=employee_id, year=year)
