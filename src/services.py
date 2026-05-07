@@ -334,13 +334,23 @@ def cancel_leave_request(
         raise LeaveError("Cannot cancel a leave request that has already started")
 
     now = datetime.now(timezone.utc)
-    db.execute(
+    result = db.execute(
         update(LeaveRequest)
-        .where(LeaveRequest.id == leave_request_id)
+        .where(
+            LeaveRequest.id == leave_request_id,
+            LeaveRequest.status.in_(
+                [LeaveStatus.PENDING.value, LeaveStatus.APPROVED.value]
+            ),
+        )
         .values(status=LeaveStatus.CANCELLED.value, updated_at=now)
     )
+    if result.rowcount == 0:
+        db.rollback()
+        raise LeaveError(
+            "Leave request status changed concurrently, cancel aborted"
+        )
 
-    # Restore balance
+    # Restore balance — only after winning the status transition
     working_days = count_working_days(
         db, lr.start_date, lr.end_date, LeaveDuration(lr.duration)
     )

@@ -60,6 +60,12 @@ class TestLeaveAPI(unittest.TestCase):
         )
         self.assertEqual(resp.status_code, 401)
 
+    def test_auth_unknown_employee(self):
+        resp = self.client.get(
+            "/api/v1/employees", headers={"Authorization": "Bearer 999"}
+        )
+        self.assertEqual(resp.status_code, 401)
+
     def test_list_employees(self):
         resp = self.client.get(
             "/api/v1/employees", headers={"Authorization": "Bearer 1"}
