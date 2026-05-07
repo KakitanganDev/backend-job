@@ -149,7 +149,8 @@ def create_leave_request(
         db.query(LeaveRequest)
         .filter(
             LeaveRequest.employee_id == employee_id,
-            LeaveRequest.status.in_([LeaveStatus.PENDING, LeaveStatus.APPROVED]),
+            LeaveRequest.status.in_(
+                [LeaveStatus.PENDING, LeaveStatus.APPROVED]),
             LeaveRequest.start_date <= end_date,
             LeaveRequest.end_date >= start_date,
         )
@@ -183,7 +184,8 @@ def create_leave_request(
     # Balance check
     balance = _get_balance(db, employee_id, leave_type, year)
     if not balance:
-        raise LeaveError(f"No leave balance found for {leave_type.value} in {year}")
+        raise LeaveError(
+            f"No leave balance found for {leave_type.value} in {year}")
 
     if leave_type != LeaveType.UNPAID:
         result = db.execute(
@@ -206,6 +208,25 @@ def create_leave_request(
             update(LeaveBalance)
             .where(LeaveBalance.id == balance.id)
             .values(used_days=LeaveBalance.used_days + requested_days)
+        )
+
+    # Re-run overlap check after the balance write so that two concurrent
+    # creates cannot both pass the first overlap read before either writes.
+    overlapping = (
+        db.query(LeaveRequest)
+        .filter(
+            LeaveRequest.employee_id == employee_id,
+            LeaveRequest.status.in_(
+                [LeaveStatus.PENDING, LeaveStatus.APPROVED]),
+            LeaveRequest.start_date <= end_date,
+            LeaveRequest.end_date >= start_date,
+        )
+        .first()
+    )
+    if overlapping:
+        db.rollback()
+        raise OverlappingLeaveError(
+            "Leave request overlaps with an existing pending or approved request"
         )
 
     lr = LeaveRequest(
@@ -235,7 +256,8 @@ def review_leave_request(
             f"Invalid decision: {decision}. Must be 'approved' or 'rejected'"
         )
 
-    lr = db.query(LeaveRequest).filter(LeaveRequest.id == leave_request_id).first()
+    lr = db.query(LeaveRequest).filter(
+        LeaveRequest.id == leave_request_id).first()
     if not lr:
         raise NotFoundError("Leave request not found")
 
@@ -246,7 +268,8 @@ def review_leave_request(
     if not reviewer:
         raise NotFoundError("Reviewer not found")
 
-    requester = db.query(Employee).filter(Employee.id == lr.employee_id).first()
+    requester = db.query(Employee).filter(
+        Employee.id == lr.employee_id).first()
 
     # Self-review: only allowed for top-level employees (manager_id IS NULL)
     if reviewer_id == lr.employee_id:
@@ -278,7 +301,8 @@ def review_leave_request(
     )
     if result.rowcount == 0:
         db.rollback()
-        raise AlreadyReviewedError("Leave request was already reviewed concurrently")
+        raise AlreadyReviewedError(
+            "Leave request was already reviewed concurrently")
 
     # Restore balance on rejection before committing — keeps both operations atomic
     if decision == LeaveStatus.REJECTED.value:
@@ -320,7 +344,8 @@ def cancel_leave_request(
     leave_request_id: int,
     employee_id: int,
 ) -> LeaveRequest:
-    lr = db.query(LeaveRequest).filter(LeaveRequest.id == leave_request_id).first()
+    lr = db.query(LeaveRequest).filter(
+        LeaveRequest.id == leave_request_id).first()
     if not lr:
         raise NotFoundError("Leave request not found")
 
@@ -328,10 +353,12 @@ def cancel_leave_request(
         raise LeaveError("You can only cancel your own leave requests")
 
     if lr.status not in (LeaveStatus.PENDING.value, LeaveStatus.APPROVED.value):
-        raise LeaveError("Only pending or approved leave requests can be cancelled")
+        raise LeaveError(
+            "Only pending or approved leave requests can be cancelled")
 
     if lr.start_date < _today():
-        raise LeaveError("Cannot cancel a leave request that has already started")
+        raise LeaveError(
+            "Cannot cancel a leave request that has already started")
 
     now = datetime.now(timezone.utc)
     result = db.execute(
@@ -383,7 +410,8 @@ def get_leave_request(
     leave_request_id: int,
     caller_id: int,
 ) -> LeaveRequest:
-    lr = db.query(LeaveRequest).filter(LeaveRequest.id == leave_request_id).first()
+    lr = db.query(LeaveRequest).filter(
+        LeaveRequest.id == leave_request_id).first()
     if not lr:
         raise NotFoundError("Leave request not found")
 
@@ -418,7 +446,8 @@ def get_leave_requests(
     ]
     visible_ids = {caller_id} | set(direct_report_ids)
 
-    query = db.query(LeaveRequest).filter(LeaveRequest.employee_id.in_(visible_ids))
+    query = db.query(LeaveRequest).filter(
+        LeaveRequest.employee_id.in_(visible_ids))
 
     if employee_id is not None:
         if employee_id not in visible_ids:
@@ -498,7 +527,8 @@ def get_employee(
         return employee
     if employee.manager_id == caller_id:
         return employee
-    raise UnauthorizedAccessError("You do not have access to this employee's details")
+    raise UnauthorizedAccessError(
+        "You do not have access to this employee's details")
 
 
 # ── Holidays ───────────────────────────────────────────────────────────────
@@ -561,7 +591,8 @@ def update_holiday(
     if not caller or caller.manager_id is not None:
         raise LeaveError("Only managers can manage holidays")
 
-    holiday = db.query(PublicHoliday).filter(PublicHoliday.id == holiday_id).first()
+    holiday = db.query(PublicHoliday).filter(
+        PublicHoliday.id == holiday_id).first()
     if not holiday:
         raise NotFoundError("Holiday not found")
 
@@ -585,7 +616,8 @@ def delete_holiday(db: Session, holiday_id: int, caller_id: int) -> None:
     if not caller or caller.manager_id is not None:
         raise LeaveError("Only managers can manage holidays")
 
-    holiday = db.query(PublicHoliday).filter(PublicHoliday.id == holiday_id).first()
+    holiday = db.query(PublicHoliday).filter(
+        PublicHoliday.id == holiday_id).first()
     if not holiday:
         raise NotFoundError("Holiday not found")
     db.delete(holiday)
