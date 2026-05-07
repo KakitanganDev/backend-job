@@ -61,8 +61,8 @@ class LeaveRequestOut(BaseModel):
     end_date: date
     reason: Optional[str]
     status: LeaveStatus
-    approved_by: Optional[int]
-    approved_at: Optional[str]
+    reviewed_by: Optional[int]
+    reviewed_at: Optional[str]
 
     class Config:
         from_attributes = True
