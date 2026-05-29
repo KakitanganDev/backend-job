@@ -50,7 +50,9 @@ class LeaveRequestCreate(BaseModel):
     leave_type: LeaveType
     start_date: date
     end_date: date
-    reason: Optional[str] = None
+    reason: Optional[str] = Field(None, max_length=500)
+    half_day_start: bool = False
+    half_day_end: bool = False
 
 
 class LeaveRequestOut(BaseModel):
@@ -59,16 +61,22 @@ class LeaveRequestOut(BaseModel):
     leave_type: LeaveType
     start_date: date
     end_date: date
+    half_day_start: bool
+    half_day_end: bool
     reason: Optional[str]
     status: LeaveStatus
     approved_by: Optional[int]
     approved_at: Optional[str]
+    estimated_deductions: Optional[list[dict]] = None
+    deductions: Optional[list[dict]] = None
+    restored_deductions: Optional[list[dict]] = None
 
     class Config:
         from_attributes = True
 
 
 class LeaveRequestApprove(BaseModel):
+    approver_id: int
     decision: LeaveStatus = Field(description="approved or rejected")
 
 
@@ -77,6 +85,36 @@ class PaginatedLeaveRequests(BaseModel):
     total: int
     page: int
     page_size: int
+
+
+# ── Exception → HTTP mapping ──────────────────────────────────────────────
+
+# Maps each LeaveError subclass to (http_status_code, error_code_string)
+_ERROR_MAP = {
+    services.EmployeeNotFoundError: (404, "EMPLOYEE_NOT_FOUND"),
+    services.LeaveRequestNotFoundError: (404, "LEAVE_REQUEST_NOT_FOUND"),
+    services.InvalidDateRangeError: (422, "INVALID_DATE_RANGE"),
+    services.BackdatedRequestError: (422, "BACKDATED_REQUEST"),
+    services.UnknownLeaveTypeError: (422, "UNKNOWN_LEAVE_TYPE"),
+    services.NoWorkingDaysError: (422, "NO_WORKING_DAYS"),
+    services.OverlappingLeaveError: (422, "OVERLAPPING_LEAVE"),
+    services.InsufficientBalanceError: (422, "INSUFFICIENT_BALANCE"),
+    services.SelfApprovalError: (403, "SELF_APPROVAL"),
+    services.NotAuthorizedApproverError: (403, "NOT_AUTHORIZED_APPROVER"),
+    services.RequestNotPendingError: (409, "REQUEST_NOT_PENDING"),
+    services.NotRequestOwnerError: (403, "NOT_REQUEST_OWNER"),
+    services.AlreadyCancelledError: (409, "ALREADY_CANCELLED"),
+    services.RejectedRequestNotCancellableError: (409, "REJECTED_NOT_CANCELLABLE"),
+}
+
+
+def _raise_http(exc: services.LeaveError) -> None:
+    """Convert a LeaveError to an HTTPException with detail + code."""
+    status_code, code = _ERROR_MAP.get(type(exc), (422, "LEAVE_ERROR"))
+    raise HTTPException(
+        status_code=status_code,
+        detail={"detail": str(exc), "code": code},
+    )
 
 
 # ── Routes ───────────────────────────────────────────────────────────────
@@ -104,12 +142,20 @@ def get_employee(employee_id: int, db: Session = Depends(get_db)):
 def create_leave_request(body: LeaveRequestCreate, db: Session = Depends(get_db)):
     try:
         lr = services.create_leave_request(
-            db, employee_id=body.employee_id, leave_type=body.leave_type,
-            start_date=body.start_date, end_date=body.end_date, reason=body.reason,
+            db,
+            employee_id=body.employee_id,
+            leave_type=body.leave_type,
+            start_date=body.start_date,
+            end_date=body.end_date,
+            reason=body.reason,
+            half_day_start=body.half_day_start,
+            half_day_end=body.half_day_end,
         )
-        return lr
+        out = LeaveRequestOut.model_validate(lr)
+        out.estimated_deductions = getattr(lr, "_estimated_deductions", None)
+        return out
     except services.LeaveError as e:
-        raise HTTPException(status_code=422, detail=str(e))
+        _raise_http(e)
 
 
 @app.get("/leave-requests", response_model=PaginatedLeaveRequests)
@@ -150,20 +196,26 @@ def review_leave_request(
 ):
     try:
         lr = services.approve_leave_request(
-            db, leave_request_id=leave_request_id, approver_id=1, decision=body.decision,
+            db, leave_request_id=leave_request_id,
+            approver_id=body.approver_id,
+            decision=body.decision,
         )
-        return lr
+        out = LeaveRequestOut.model_validate(lr)
+        out.deductions = getattr(lr, "_deductions", None)
+        return out
     except services.LeaveError as e:
-        raise HTTPException(status_code=422, detail=str(e))
+        _raise_http(e)
 
 
 @app.post("/leave-requests/{leave_request_id}/cancel", response_model=LeaveRequestOut)
 def cancel_leave_request(leave_request_id: int, employee_id: int = Query(...), db: Session = Depends(get_db)):
     try:
         lr = services.cancel_leave_request(db, leave_request_id=leave_request_id, employee_id=employee_id)
-        return lr
+        out = LeaveRequestOut.model_validate(lr)
+        out.restored_deductions = getattr(lr, "_restored_deductions", None)
+        return out
     except services.LeaveError as e:
-        raise HTTPException(status_code=422, detail=str(e))
+        _raise_http(e)
 
 
 @app.get("/leave-balances/{employee_id}", response_model=list[LeaveBalanceOut])
