@@ -22,17 +22,73 @@ class LeaveError(Exception):
     pass
 
 
-class InsufficientBalanceError(LeaveError):
+# ── Employee / Request lookup errors ─────────────────────────────────────────
+
+class EmployeeNotFoundError(LeaveError):
     pass
 
+
+class LeaveRequestNotFoundError(LeaveError):
+    pass
+
+
+# ── Date validation errors ────────────────────────────────────────────────────
+
+class InvalidDateRangeError(LeaveError):
+    pass
+
+
+class BackdatedRequestError(LeaveError):
+    pass
+
+
+class UnknownLeaveTypeError(LeaveError):
+    pass
+
+
+class NoWorkingDaysError(LeaveError):
+    pass
+
+
+# ── Conflict errors ───────────────────────────────────────────────────────────
 
 class OverlappingLeaveError(LeaveError):
     pass
 
 
+class InsufficientBalanceError(LeaveError):
+    pass
+
+
+# ── Approval / authorization errors ──────────────────────────────────────────
+
 class SelfApprovalError(LeaveError):
     pass
 
+
+class NotAuthorizedApproverError(LeaveError):
+    pass
+
+
+class RequestNotPendingError(LeaveError):
+    pass
+
+
+# ── Cancellation errors ───────────────────────────────────────────────────────
+
+class NotRequestOwnerError(LeaveError):
+    pass
+
+
+class AlreadyCancelledError(LeaveError):
+    pass
+
+
+class RejectedRequestNotCancellableError(LeaveError):
+    pass
+
+
+# ── Legacy alias ─────────────────────────────────────────────────────────────
 
 class CannotModifyApprovedLeaveError(LeaveError):
     pass
