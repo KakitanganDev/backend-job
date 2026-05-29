@@ -101,7 +101,24 @@ def get_leave_requests(
     List leave requests with filtering and pagination.
     Returns (items, total_count).
     """
-    raise NotImplementedError("Candidate must implement this")
+    query = db.query(LeaveRequest)
+
+    if employee_id is not None:
+        query = query.filter(LeaveRequest.employee_id == employee_id)
+    if status is not None:
+        query = query.filter(LeaveRequest.status == status)
+    if leave_type is not None:
+        query = query.filter(LeaveRequest.leave_type == leave_type)
+    if from_date is not None:
+        query = query.filter(LeaveRequest.start_date >= from_date)
+    if to_date is not None:
+        query = query.filter(LeaveRequest.end_date <= to_date)
+
+    total_count = query.count()
+    offset = (page - 1) * page_size
+    items = query.offset(offset).limit(page_size).all()
+
+    return items, total_count
 
 
 def get_leave_balances(
@@ -111,8 +128,36 @@ def get_leave_balances(
 ) -> list[LeaveBalance]:
     """
     Get leave balances for an employee for a given year (defaults to current year).
+    For any LeaveType with no existing row, a synthesized row with zero days is returned.
+    Synthesized rows are NOT persisted to the database.
     """
-    raise NotImplementedError("Candidate must implement this")
+    if year is None:
+        year = date.today().year
+
+    existing_rows = (
+        db.query(LeaveBalance)
+        .filter(
+            LeaveBalance.employee_id == employee_id,
+            LeaveBalance.year == year,
+        )
+        .all()
+    )
+
+    existing_types = {row.leave_type for row in existing_rows}
+
+    synthesized = [
+        LeaveBalance(
+            employee_id=employee_id,
+            leave_type=lt,
+            year=year,
+            total_days=0,
+            used_days=0,
+        )
+        for lt in LeaveType
+        if lt not in existing_types
+    ]
+
+    return existing_rows + synthesized
 
 
 def seed_demo_data(db: Session) -> None:
