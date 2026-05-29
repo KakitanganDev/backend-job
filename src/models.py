@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from sqlalchemy import Column, Integer, String, Float, Date, DateTime, ForeignKey, Enum as SqlEnum
+from sqlalchemy import Boolean, CheckConstraint, Column, Integer, String, Float, Date, DateTime, ForeignKey, UniqueConstraint, Enum as SqlEnum
 from sqlalchemy.orm import relationship
 import enum
 
@@ -35,7 +35,7 @@ class Employee(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     manager = relationship("Employee", remote_side="Employee.id")
-    leave_requests = relationship("LeaveRequest", back_populates="employee")
+    leave_requests = relationship("LeaveRequest", back_populates="employee", foreign_keys="LeaveRequest.employee_id")
     leave_balances = relationship("LeaveBalance", back_populates="employee")
 
 
@@ -54,8 +54,12 @@ class LeaveRequest(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+    half_day_start = Column(Boolean, nullable=False, default=False)
+    half_day_end = Column(Boolean, nullable=False, default=False)
+
     employee = relationship("Employee", back_populates="leave_requests", foreign_keys=[employee_id])
     approver = relationship("Employee", foreign_keys=[approved_by])
+    deductions = relationship("LeaveDeduction", back_populates="leave_request")
 
 
 class LeaveBalance(Base):
@@ -75,3 +79,29 @@ class LeaveBalance(Base):
     @property
     def remaining_days(self) -> float:
         return self.total_days - self.used_days
+
+
+class Holiday(Base):
+    __tablename__ = "holidays"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    date = Column(Date, nullable=False, unique=True, index=True)
+    name = Column(String, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class LeaveDeduction(Base):
+    __tablename__ = "leave_deductions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    leave_request_id = Column(Integer, ForeignKey("leave_requests.id"), nullable=False, index=True)
+    year = Column(Integer, nullable=False)
+    days = Column(Float, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("leave_request_id", "year", name="uq_leave_deduction_request_year"),
+        CheckConstraint("days > 0", name="ck_leave_deduction_days_positive"),
+    )
+
+    leave_request = relationship("LeaveRequest", back_populates="deductions")
