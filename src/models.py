@@ -35,7 +35,11 @@ class Employee(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     manager = relationship("Employee", remote_side="Employee.id")
-    leave_requests = relationship("LeaveRequest", back_populates="employee")
+    leave_requests = relationship(
+        "LeaveRequest",
+        back_populates="employee",
+        foreign_keys="LeaveRequest.employee_id",
+    )
     leave_balances = relationship("LeaveBalance", back_populates="employee")
 
 
@@ -56,6 +60,7 @@ class LeaveRequest(Base):
 
     employee = relationship("Employee", back_populates="leave_requests", foreign_keys=[employee_id])
     approver = relationship("Employee", foreign_keys=[approved_by])
+    deductions = relationship("LeaveDeduction", back_populates="leave_request", cascade="all, delete-orphan")
 
 
 class LeaveBalance(Base):
@@ -75,3 +80,28 @@ class LeaveBalance(Base):
     @property
     def remaining_days(self) -> float:
         return self.total_days - self.used_days
+
+
+class LeaveDeduction(Base):
+    """Records the exact days deducted per year when a leave request is approved."""
+
+    __tablename__ = "leave_deductions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    leave_request_id = Column(Integer, ForeignKey("leave_requests.id"), nullable=False, index=True)
+    year = Column(Integer, nullable=False)
+    days = Column(Float, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    leave_request = relationship("LeaveRequest", back_populates="deductions")
+
+
+class Holiday(Base):
+    """Public holidays that are excluded from leave day counting."""
+
+    __tablename__ = "holidays"
+
+    id = Column(Integer, primary_key=True, index=True)
+    date = Column(Date, nullable=False, unique=True, index=True)
+    name = Column(String, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
