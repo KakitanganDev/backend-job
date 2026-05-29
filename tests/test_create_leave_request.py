@@ -246,8 +246,8 @@ class TestHalfDay:
         deductions = lr._estimated_deductions
         assert deductions[0]["days"] == pytest.approx(0.5)
 
-    def test_half_day_end_counts_half(self, db, employee):
-        """half_day_end=True for a single day counts 0.5."""
+    def test_half_day_end_ignored_for_single_day(self, db, employee):
+        """half_day_end is ignored for same-day requests; only half_day_start matters."""
         lr = create_leave_request(
             db,
             employee_id=employee.id,
@@ -257,7 +257,22 @@ class TestHalfDay:
             half_day_end=True,
         )
         deductions = lr._estimated_deductions
-        assert deductions[0]["days"] == pytest.approx(0.5)
+        # spec: for single-day requests, half_day_end is ignored → full day
+        assert deductions[0]["days"] == pytest.approx(1.0)
+
+    def test_half_day_end_multi_day_counts_half(self, db, employee):
+        """half_day_end=True on a multi-day range applies 0.5 to the last day."""
+        lr = create_leave_request(
+            db,
+            employee_id=employee.id,
+            leave_type=LeaveType.ANNUAL,
+            start_date=date(2026, 6, 1),
+            end_date=date(2026, 6, 2),
+            half_day_end=True,
+        )
+        deductions = lr._estimated_deductions
+        # June 1 (full) + June 2 (half) = 1.5
+        assert deductions[0]["days"] == pytest.approx(1.5)
 
 
 class TestYearSpanning:

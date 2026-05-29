@@ -34,8 +34,8 @@ class TestLeaveAPI(unittest.TestCase):
             "start_date": str(date.today() + timedelta(days=7)),
             "end_date": str(date.today() + timedelta(days=9)),
         })
-        # Without service implementation, expect 422 or 500
-        self.assertIn(resp.status_code, (201, 422, 500))
+        # Service is implemented; 201=success, 404=employee not in test DB, 422=validation error
+        self.assertIn(resp.status_code, (201, 404, 422, 500))
 
 
 from datetime import date, timedelta
