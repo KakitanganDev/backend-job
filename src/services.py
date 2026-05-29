@@ -9,7 +9,7 @@ Each function should raise appropriate exceptions for invalid operations
 from datetime import date, datetime
 from typing import Optional
 
-from sqlalchemy import or_
+from sqlalchemy import or_, update as sa_update
 from sqlalchemy.orm import Session
 
 from src.models import Employee, LeaveRequest, LeaveBalance, LeaveType, LeaveStatus
@@ -78,11 +78,20 @@ class EmployeeNotFoundError(LeaveError):
     pass
 
 
+class LeaveRequestNotFoundError(LeaveError):
+    pass
+
+
 # ── Helpers ───────────────────────────────────────────────────────────────
 
 def _today() -> date:
     """Return today's date. Overridable in tests via monkeypatch."""
     return date.today()
+
+
+def _now_utc() -> datetime:
+    """Return current UTC datetime. Overridable in tests via monkeypatch."""
+    return datetime.utcnow()
 
 
 # ── Service functions ─────────────────────────────────────────────────────
@@ -125,10 +134,9 @@ def create_leave_request(
         raise UnknownLeaveTypeError("unknown leave type")
 
     # 4. Working day count > 0
-    # Query holidays in the date range (table may not exist, so handle gracefully)
     holidays_set: set[date] = set()
     try:
-        from src.models import Holiday  # type: ignore[attr-defined]
+        from src.models import Holiday
         holiday_rows = (
             db.query(Holiday)
             .filter(Holiday.date >= start_date, Holiday.date <= end_date)
@@ -136,7 +144,6 @@ def create_leave_request(
         )
         holidays_set = {h.date for h in holiday_rows}
     except Exception:
-        # Holiday model may not exist in this schema version
         pass
 
     deductions = partition_by_year(start_date, end_date, half_day_start, half_day_end, holidays_set)
@@ -215,7 +222,129 @@ def approve_leave_request(
     - On approval: deduct from leave balance
     - On rejection: record reason in comment field if needed
     """
-    raise NotImplementedError("Candidate must implement this")
+    from src.models import LeaveDeduction, Holiday
+
+    # 1. Load request
+    lr = db.query(LeaveRequest).filter(LeaveRequest.id == leave_request_id).first()
+    if not lr:
+        raise LeaveRequestNotFoundError(f"leave request {leave_request_id} not found")
+
+    # Load employee
+    employee = db.query(Employee).filter(Employee.id == lr.employee_id).first()
+
+    # 2. Authorization checks
+    if approver_id == lr.employee_id:
+        raise SelfApprovalError("you cannot approve your own leave request")
+
+    if employee.manager_id != approver_id:
+        raise NotAuthorizedApproverError("you are not authorized to approve this request")
+
+    # 3. Status check (pre-flight)
+    if lr.status != LeaveStatus.PENDING:
+        raise RequestNotPendingError("this request is no longer pending")
+
+    if decision == LeaveStatus.APPROVED:
+        # 4. Balance re-check
+        try:
+            holiday_rows = (
+                db.query(Holiday)
+                .filter(Holiday.date >= lr.start_date, Holiday.date <= lr.end_date)
+                .all()
+            )
+            holidays_set = {h.date for h in holiday_rows}
+        except Exception:
+            holidays_set = set()
+
+        deductions = partition_by_year(
+            lr.start_date, lr.end_date,
+            lr.half_day_start, lr.half_day_end,
+            holidays_set,
+        )
+
+        for year, days in deductions.items():
+            balance = (
+                db.query(LeaveBalance)
+                .filter(
+                    LeaveBalance.employee_id == lr.employee_id,
+                    LeaveBalance.leave_type == lr.leave_type,
+                    LeaveBalance.year == year,
+                )
+                .first()
+            )
+            remaining = balance.remaining_days if balance else 0.0
+            if remaining < days:
+                raise InsufficientBalanceError(
+                    f"{employee.name} no longer has enough balance for this request"
+                )
+
+        # 5. CAS UPDATE — atomic compare-and-swap
+        stmt = (
+            sa_update(LeaveRequest)
+            .where(
+                LeaveRequest.id == leave_request_id,
+                LeaveRequest.status == LeaveStatus.PENDING,
+            )
+            .values(
+                status=LeaveStatus.APPROVED,
+                approved_by=approver_id,
+                approved_at=_now_utc(),
+            )
+        )
+        result = db.execute(stmt)
+
+        if result.rowcount == 0:
+            db.rollback()
+            raise RequestNotPendingError("this request is no longer pending")
+
+        # 6. Balance deductions (in the same transaction)
+        for year, days in deductions.items():
+            balance = (
+                db.query(LeaveBalance)
+                .filter(
+                    LeaveBalance.employee_id == lr.employee_id,
+                    LeaveBalance.leave_type == lr.leave_type,
+                    LeaveBalance.year == year,
+                )
+                .first()
+            )
+            if balance:
+                balance.used_days = balance.used_days + days
+
+            db.add(LeaveDeduction(
+                leave_request_id=leave_request_id,
+                year=year,
+                days=days,
+            ))
+
+        # 7. Commit and refresh
+        db.commit()
+        db.refresh(lr)
+        lr._deductions = [{"year": yr, "days": d} for yr, d in deductions.items()]
+
+    elif decision == LeaveStatus.REJECTED:
+        # CAS UPDATE for rejection
+        stmt = (
+            sa_update(LeaveRequest)
+            .where(
+                LeaveRequest.id == leave_request_id,
+                LeaveRequest.status == LeaveStatus.PENDING,
+            )
+            .values(
+                status=LeaveStatus.REJECTED,
+                approved_by=approver_id,
+                approved_at=_now_utc(),
+            )
+        )
+        result = db.execute(stmt)
+
+        if result.rowcount == 0:
+            db.rollback()
+            raise RequestNotPendingError("this request is no longer pending")
+
+        db.commit()
+        db.refresh(lr)
+
+    return lr
 
 
 def cancel_leave_request(
