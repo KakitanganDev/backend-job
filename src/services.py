@@ -9,10 +9,14 @@ Each function should raise appropriate exceptions for invalid operations
 from datetime import date, datetime
 from typing import Optional
 
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from src.models import Employee, LeaveRequest, LeaveBalance, LeaveType, LeaveStatus
+from src.leave_math import partition_by_year
 
+
+# ── Exceptions ────────────────────────────────────────────────────────────
 
 class LeaveError(Exception):
     pass
@@ -34,6 +38,55 @@ class CannotModifyApprovedLeaveError(LeaveError):
     pass
 
 
+class RequestNotPendingError(LeaveError):
+    pass
+
+
+class NotRequestOwnerError(LeaveError):
+    pass
+
+
+class NotAuthorizedApproverError(LeaveError):
+    pass
+
+
+class NoWorkingDaysError(LeaveError):
+    pass
+
+
+class UnknownLeaveTypeError(LeaveError):
+    pass
+
+
+class BackdatedRequestError(LeaveError):
+    pass
+
+
+class InvalidDateRangeError(LeaveError):
+    pass
+
+
+class AlreadyCancelledError(LeaveError):
+    pass
+
+
+class RejectedRequestNotCancellableError(LeaveError):
+    pass
+
+
+class EmployeeNotFoundError(LeaveError):
+    pass
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────
+
+def _today() -> date:
+    """Return today's date. Overridable in tests via monkeypatch."""
+    return date.today()
+
+
+# ── Service functions ─────────────────────────────────────────────────────
+
 def create_leave_request(
     db: Session,
     employee_id: int,
@@ -41,18 +94,108 @@ def create_leave_request(
     start_date: date,
     end_date: date,
     reason: Optional[str] = None,
+    half_day_start: bool = False,
+    half_day_end: bool = False,
 ) -> LeaveRequest:
     """
     Create a new leave request.
-    Must validate:
-    - Employee exists
-    - start_date <= end_date
-    - start_date >= today (no back-dating)
-    - No overlapping leave requests for the same employee
-    - Employee has sufficient leave balance for the requested type
-    - end_date - start_date >= 0 (at least 1 day — or handle half-day logic)
+
+    Validation order (cheapest-first, stop on first failure):
+    1. Employee exists
+    2. Date sanity (end >= start, start >= today)
+    3. Leave type valid
+    4. Working day count > 0
+    5. No overlap with own pending/approved requests
+    6. Sufficient balance (per year)
     """
-    raise NotImplementedError("Candidate must implement this")
+
+    # 1. Employee exists
+    employee = db.query(Employee).filter(Employee.id == employee_id).first()
+    if not employee:
+        raise EmployeeNotFoundError(f"employee {employee_id} not found")
+
+    # 2. Date sanity
+    if end_date < start_date:
+        raise InvalidDateRangeError("end date cannot be before start date")
+    if start_date < _today():
+        raise BackdatedRequestError("start date cannot be in the past")
+
+    # 3. Leave type valid
+    if leave_type not in LeaveType.__members__.values():
+        raise UnknownLeaveTypeError("unknown leave type")
+
+    # 4. Working day count > 0
+    # Query holidays in the date range (table may not exist, so handle gracefully)
+    holidays_set: set[date] = set()
+    try:
+        from src.models import Holiday  # type: ignore[attr-defined]
+        holiday_rows = (
+            db.query(Holiday)
+            .filter(Holiday.date >= start_date, Holiday.date <= end_date)
+            .all()
+        )
+        holidays_set = {h.date for h in holiday_rows}
+    except Exception:
+        # Holiday model may not exist in this schema version
+        pass
+
+    deductions = partition_by_year(start_date, end_date, half_day_start, half_day_end, holidays_set)
+    if not deductions or sum(deductions.values()) == 0:
+        raise NoWorkingDaysError("this request covers no working days")
+
+    # 5. Own-leaves overlap
+    active_statuses = [LeaveStatus.PENDING, LeaveStatus.APPROVED]
+    overlapping = (
+        db.query(LeaveRequest)
+        .filter(
+            LeaveRequest.employee_id == employee_id,
+            LeaveRequest.status.in_(active_statuses),
+            LeaveRequest.end_date >= start_date,
+            LeaveRequest.start_date <= end_date,
+        )
+        .first()
+    )
+    if overlapping:
+        raise OverlappingLeaveError(
+            f"this request overlaps with an existing leave request from "
+            f"{overlapping.start_date} to {overlapping.end_date}"
+        )
+
+    # 6. Sufficient balance (per year)
+    for year, days in deductions.items():
+        balance = (
+            db.query(LeaveBalance)
+            .filter(
+                LeaveBalance.employee_id == employee_id,
+                LeaveBalance.leave_type == leave_type,
+                LeaveBalance.year == year,
+            )
+            .first()
+        )
+        remaining = balance.remaining_days if balance else 0.0
+        if remaining < days:
+            raise InsufficientBalanceError(
+                f"insufficient {leave_type} leave balance: "
+                f"{days:.0f} days requested, {remaining:.0f} days available"
+            )
+
+    # 7. Create the request
+    lr = LeaveRequest(
+        employee_id=employee_id,
+        leave_type=leave_type,
+        start_date=start_date,
+        end_date=end_date,
+        reason=reason,
+        status=LeaveStatus.PENDING,
+    )
+    db.add(lr)
+    db.commit()
+    db.refresh(lr)
+
+    # Attach estimated deductions as a transient attribute
+    lr._estimated_deductions = [{"year": yr, "days": d} for yr, d in deductions.items()]
+
+    return lr
 
 
 def approve_leave_request(
