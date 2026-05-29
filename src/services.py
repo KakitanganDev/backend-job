@@ -88,53 +88,7 @@ class RejectedRequestNotCancellableError(LeaveError):
     pass
 
 
-# ── Legacy alias ─────────────────────────────────────────────────────────────
-
 class CannotModifyApprovedLeaveError(LeaveError):
-    pass
-
-
-class RequestNotPendingError(LeaveError):
-    pass
-
-
-class NotRequestOwnerError(LeaveError):
-    pass
-
-
-class NotAuthorizedApproverError(LeaveError):
-    pass
-
-
-class NoWorkingDaysError(LeaveError):
-    pass
-
-
-class UnknownLeaveTypeError(LeaveError):
-    pass
-
-
-class BackdatedRequestError(LeaveError):
-    pass
-
-
-class InvalidDateRangeError(LeaveError):
-    pass
-
-
-class AlreadyCancelledError(LeaveError):
-    pass
-
-
-class RejectedRequestNotCancellableError(LeaveError):
-    pass
-
-
-class EmployeeNotFoundError(LeaveError):
-    pass
-
-
-class LeaveRequestNotFoundError(LeaveError):
     pass
 
 
