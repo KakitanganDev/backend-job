@@ -116,8 +116,8 @@ def get_leave_balances(
 
 
 def seed_demo_data(db: Session) -> None:
-    """Seed database with demo employees and leave balances for testing."""
-    from src.models import LeaveType, LeaveBalance
+    """Seed database with demo employees, leave balances, and holidays for testing."""
+    from src.models import LeaveType, LeaveBalance, Holiday
 
     existing = db.query(Employee).first()
     if existing:
@@ -126,15 +126,26 @@ def seed_demo_data(db: Session) -> None:
     alice = Employee(name="Alice Manager", email="alice@company.com", department="Engineering")
     bob = Employee(name="Bob Engineer", email="bob@company.com", department="Engineering", manager=alice)
     carol = Employee(name="Carol Engineer", email="carol@company.com", department="Engineering", manager=alice)
-    db.add_all([alice, bob, carol])
+    david = Employee(name="David Manager", email="david@company.com", department="Engineering")
+    db.add_all([alice, bob, carol, david])
     db.flush()
 
     year = date.today().year
     balances = [
+        LeaveBalance(employee_id=alice.id, leave_type=LeaveType.ANNUAL, year=year, total_days=14),
+        LeaveBalance(employee_id=alice.id, leave_type=LeaveType.SICK, year=year, total_days=12),
         LeaveBalance(employee_id=bob.id, leave_type=LeaveType.ANNUAL, year=year, total_days=14),
         LeaveBalance(employee_id=bob.id, leave_type=LeaveType.SICK, year=year, total_days=12),
         LeaveBalance(employee_id=carol.id, leave_type=LeaveType.ANNUAL, year=year, total_days=14),
         LeaveBalance(employee_id=carol.id, leave_type=LeaveType.SICK, year=year, total_days=12),
+        LeaveBalance(employee_id=david.id, leave_type=LeaveType.ANNUAL, year=year, total_days=14),
+        LeaveBalance(employee_id=david.id, leave_type=LeaveType.SICK, year=year, total_days=12),
     ]
     db.add_all(balances)
+
+    holidays = [
+        Holiday(date=date(year, 8, 12), name="National Holiday"),
+        Holiday(date=date(year + 1, 1, 1), name="New Year's Day"),
+    ]
+    db.add_all(holidays)
     db.commit()
