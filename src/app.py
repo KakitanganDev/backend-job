@@ -9,7 +9,7 @@ from datetime import date
 from typing import Optional
 
 from fastapi import FastAPI, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
 
 from src.database import engine, get_db, Base
@@ -78,6 +78,13 @@ class LeaveRequestOut(BaseModel):
 class LeaveRequestApprove(BaseModel):
     approver_id: int
     decision: LeaveStatus = Field(description="approved or rejected")
+
+    @field_validator("decision")
+    @classmethod
+    def must_be_approved_or_rejected(cls, v: LeaveStatus) -> LeaveStatus:
+        if v not in (LeaveStatus.APPROVED, LeaveStatus.REJECTED):
+            raise ValueError("decision must be 'approved' or 'rejected'")
+        return v
 
 
 class PaginatedLeaveRequests(BaseModel):

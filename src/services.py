@@ -354,6 +354,9 @@ def approve_leave_request(
         db.commit()
         db.refresh(lr)
 
+    else:
+        raise ValueError(f"decision must be 'approved' or 'rejected', got {decision!r}")
+
     return lr
 
 
@@ -385,10 +388,7 @@ def cancel_leave_request(
     if lr.status == LeaveStatus.REJECTED:
         raise RejectedRequestNotCancellableError("rejected requests cannot be cancelled")
 
-    # 4. Record prior status
-    prior_status = lr.status
-
-    # 5. CAS UPDATE — atomic compare-and-swap from pending OR approved to cancelled
+    # 4. CAS UPDATE — atomic compare-and-swap from pending OR approved to cancelled
     stmt = (
         sa_update(LeaveRequest)
         .where(
@@ -405,27 +405,28 @@ def cancel_leave_request(
         db.rollback()
         raise AlreadyCancelledError("this request is already cancelled")
 
-    # 6. Balance restoration (only if prior_status was APPROVED)
-    deduction_rows = []
-    if prior_status == LeaveStatus.APPROVED:
-        deduction_rows = (
-            db.query(LeaveDeduction)
-            .filter(LeaveDeduction.leave_request_id == leave_request_id)
-            .all()
-        )
-        for deduction in deduction_rows:
-            balance = (
-                db.query(LeaveBalance)
-                .filter(
-                    LeaveBalance.employee_id == lr.employee_id,
-                    LeaveBalance.leave_type == lr.leave_type,
-                    LeaveBalance.year == deduction.year,
-                )
-                .first()
+    # 5. Balance restoration — always query deduction rows after CAS succeeds.
+    # Checking prior_status before CAS is a race: the request could be approved
+    # between our status read and the CAS update, leaving deductions unrestored.
+    # Deduction rows are the authoritative signal that a balance was deducted.
+    deduction_rows = (
+        db.query(LeaveDeduction)
+        .filter(LeaveDeduction.leave_request_id == leave_request_id)
+        .all()
+    )
+    for deduction in deduction_rows:
+        balance = (
+            db.query(LeaveBalance)
+            .filter(
+                LeaveBalance.employee_id == lr.employee_id,
+                LeaveBalance.leave_type == lr.leave_type,
+                LeaveBalance.year == deduction.year,
             )
-            if balance:
-                balance.used_days = balance.used_days - deduction.days
-            db.delete(deduction)
+            .first()
+        )
+        if balance:
+            balance.used_days = balance.used_days - deduction.days
+        db.delete(deduction)
 
     # 7. Commit and return
     db.commit()
