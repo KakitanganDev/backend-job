@@ -1,0 +1,11 @@
+[project]
+name = "agent-a3f3693fe72b2911f"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi>=0.136.3",
+    "httpx>=0.28.1",
+    "pytest>=9.0.3",
+    "sqlalchemy>=2.0.50",
+]
