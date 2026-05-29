@@ -187,6 +187,8 @@ def create_leave_request(
         end_date=end_date,
         reason=reason,
         status=LeaveStatus.PENDING,
+        half_day_start=half_day_start,
+        half_day_end=half_day_end,
     )
     db.add(lr)
     db.commit()
