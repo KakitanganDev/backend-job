@@ -117,6 +117,23 @@ def _raise_http(exc: services.LeaveError) -> None:
     )
 
 
+def _lr_to_dict(lr) -> dict:
+    """Convert a LeaveRequest ORM object to a plain dict for Pydantic, avoiding ORM relationship collision."""
+    return {
+        "id": lr.id,
+        "employee_id": lr.employee_id,
+        "leave_type": lr.leave_type,
+        "start_date": lr.start_date,
+        "end_date": lr.end_date,
+        "half_day_start": lr.half_day_start,
+        "half_day_end": lr.half_day_end,
+        "reason": lr.reason,
+        "status": lr.status,
+        "approved_by": lr.approved_by,
+        "approved_at": lr.approved_at.isoformat() if lr.approved_at else None,
+    }
+
+
 # ── Routes ───────────────────────────────────────────────────────────────
 
 @app.get("/employees", response_model=list[EmployeeOut])
@@ -151,9 +168,9 @@ def create_leave_request(body: LeaveRequestCreate, db: Session = Depends(get_db)
             half_day_start=body.half_day_start,
             half_day_end=body.half_day_end,
         )
-        out = LeaveRequestOut.model_validate(lr)
-        out.estimated_deductions = getattr(lr, "_estimated_deductions", None)
-        return out
+        d = _lr_to_dict(lr)
+        d["estimated_deductions"] = getattr(lr, "_estimated_deductions", None)
+        return LeaveRequestOut.model_validate(d)
     except services.LeaveError as e:
         _raise_http(e)
 
@@ -174,7 +191,7 @@ def list_leave_requests(
         from_date=from_date, to_date=to_date, page=page, page_size=page_size,
     )
     return PaginatedLeaveRequests(
-        items=[LeaveRequestOut.model_validate(i) for i in items],
+        items=[LeaveRequestOut.model_validate(_lr_to_dict(i)) for i in items],
         total=total, page=page, page_size=page_size,
     )
 
@@ -185,7 +202,7 @@ def get_leave_request(leave_request_id: int, db: Session = Depends(get_db)):
     lr = db.query(LeaveRequest).filter(LeaveRequest.id == leave_request_id).first()
     if not lr:
         raise HTTPException(status_code=404, detail="Leave request not found")
-    return lr
+    return LeaveRequestOut.model_validate(_lr_to_dict(lr))
 
 
 @app.post("/leave-requests/{leave_request_id}/review", response_model=LeaveRequestOut)
@@ -200,9 +217,9 @@ def review_leave_request(
             approver_id=body.approver_id,
             decision=body.decision,
         )
-        out = LeaveRequestOut.model_validate(lr)
-        out.deductions = getattr(lr, "_deductions", None)
-        return out
+        d = _lr_to_dict(lr)
+        d["deductions"] = getattr(lr, "_deductions", None)
+        return LeaveRequestOut.model_validate(d)
     except services.LeaveError as e:
         _raise_http(e)
 
@@ -211,9 +228,9 @@ def review_leave_request(
 def cancel_leave_request(leave_request_id: int, employee_id: int = Query(...), db: Session = Depends(get_db)):
     try:
         lr = services.cancel_leave_request(db, leave_request_id=leave_request_id, employee_id=employee_id)
-        out = LeaveRequestOut.model_validate(lr)
-        out.restored_deductions = getattr(lr, "_restored_deductions", None)
-        return out
+        d = _lr_to_dict(lr)
+        d["restored_deductions"] = getattr(lr, "_restored_deductions", None)
+        return LeaveRequestOut.model_validate(d)
     except services.LeaveError as e:
         _raise_http(e)
 
