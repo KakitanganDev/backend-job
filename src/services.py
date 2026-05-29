@@ -358,7 +358,70 @@ def cancel_leave_request(
     - Can only cancel PENDING or APPROVED leaves
     - Cancelling an approved leave restores balance
     """
-    raise NotImplementedError("Candidate must implement this")
+    from src.models import LeaveDeduction
+
+    # 1. Load request
+    lr = db.query(LeaveRequest).filter(LeaveRequest.id == leave_request_id).first()
+    if not lr:
+        raise LeaveRequestNotFoundError(f"leave request {leave_request_id} not found")
+
+    # 2. Ownership check
+    if lr.employee_id != employee_id:
+        raise NotRequestOwnerError("only the request owner can cancel this leave")
+
+    # 3. Terminal state checks
+    if lr.status == LeaveStatus.CANCELLED:
+        raise AlreadyCancelledError("this request is already cancelled")
+    if lr.status == LeaveStatus.REJECTED:
+        raise RejectedRequestNotCancellableError("rejected requests cannot be cancelled")
+
+    # 4. Record prior status
+    prior_status = lr.status
+
+    # 5. CAS UPDATE — atomic compare-and-swap from pending OR approved to cancelled
+    stmt = (
+        sa_update(LeaveRequest)
+        .where(
+            LeaveRequest.id == leave_request_id,
+            or_(
+                LeaveRequest.status == LeaveStatus.PENDING,
+                LeaveRequest.status == LeaveStatus.APPROVED,
+            )
+        )
+        .values(status=LeaveStatus.CANCELLED)
+    )
+    result = db.execute(stmt)
+    if result.rowcount == 0:
+        db.rollback()
+        raise AlreadyCancelledError("this request is already cancelled")
+
+    # 6. Balance restoration (only if prior_status was APPROVED)
+    deduction_rows = []
+    if prior_status == LeaveStatus.APPROVED:
+        deduction_rows = (
+            db.query(LeaveDeduction)
+            .filter(LeaveDeduction.leave_request_id == leave_request_id)
+            .all()
+        )
+        for deduction in deduction_rows:
+            balance = (
+                db.query(LeaveBalance)
+                .filter(
+                    LeaveBalance.employee_id == lr.employee_id,
+                    LeaveBalance.leave_type == lr.leave_type,
+                    LeaveBalance.year == deduction.year,
+                )
+                .first()
+            )
+            if balance:
+                balance.used_days = balance.used_days - deduction.days
+            db.delete(deduction)
+
+    # 7. Commit and return
+    db.commit()
+    db.refresh(lr)
+    lr._restored_deductions = [{"year": d.year, "days": d.days} for d in deduction_rows]
+    return lr
 
 
 def get_leave_requests(
