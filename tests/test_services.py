@@ -328,10 +328,10 @@ def test_public_holiday_exclusion(seeded_db, bob, monkeypatch):
         balance.used_days = 0
         seeded_db.commit()
 
-    # Insert a public holiday
-    holiday = Holiday(date=date(2026, 8, 12), name="Test Holiday")
-    seeded_db.add(holiday)
-    seeded_db.commit()
+    # Insert a public holiday (seed_demo_data may have already inserted this date)
+    if not seeded_db.query(Holiday).filter(Holiday.date == date(2026, 8, 12)).first():
+        seeded_db.add(Holiday(date=date(2026, 8, 12), name="Test Holiday"))
+        seeded_db.commit()
 
     # Mon 2026-08-10 to Fri 2026-08-14 = 5 working days - 1 holiday = 4.0
     lr = services.create_leave_request(
@@ -378,9 +378,9 @@ def test_year_boundary_split(seeded_db, bob, monkeypatch):
         bal_2027.total_days = 14
         bal_2027.used_days = 0
 
-    # Add holiday on 2027-01-01
-    holiday = Holiday(date=date(2027, 1, 1), name="New Year")
-    seeded_db.add(holiday)
+    # Add holiday on 2027-01-01 (seed_demo_data may have already inserted this date)
+    if not seeded_db.query(Holiday).filter(Holiday.date == date(2027, 1, 1)).first():
+        seeded_db.add(Holiday(date=date(2027, 1, 1), name="New Year"))
     seeded_db.commit()
 
     # 2026-12-29 (Tue) to 2027-01-05 (Tue)
