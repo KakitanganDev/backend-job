@@ -5,7 +5,7 @@ This is the entrypoint. Routes are defined but most business logic
 in services.py needs to be implemented to make everything work.
 """
 
-from datetime import date
+from datetime import date, datetime
 from typing import Optional
 
 from fastapi import FastAPI, Depends, HTTPException, Query
@@ -62,13 +62,14 @@ class LeaveRequestOut(BaseModel):
     reason: Optional[str]
     status: LeaveStatus
     approved_by: Optional[int]
-    approved_at: Optional[str]
+    approved_at: Optional[datetime]
 
     class Config:
         from_attributes = True
 
 
 class LeaveRequestApprove(BaseModel):
+    approver_id: int = Field(description="ID of the manager performing the review")
     decision: LeaveStatus = Field(description="approved or rejected")
 
 
@@ -150,7 +151,7 @@ def review_leave_request(
 ):
     try:
         lr = services.approve_leave_request(
-            db, leave_request_id=leave_request_id, approver_id=1, decision=body.decision,
+            db, leave_request_id=leave_request_id, approver_id=body.approver_id, decision=body.decision,
         )
         return lr
     except services.LeaveError as e:

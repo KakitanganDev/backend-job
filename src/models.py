@@ -35,7 +35,7 @@ class Employee(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     manager = relationship("Employee", remote_side="Employee.id")
-    leave_requests = relationship("LeaveRequest", back_populates="employee")
+    leave_requests = relationship("LeaveRequest", back_populates="employee", foreign_keys="LeaveRequest.employee_id")
     leave_balances = relationship("LeaveBalance", back_populates="employee")
 
 
